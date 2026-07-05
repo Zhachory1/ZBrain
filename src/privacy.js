@@ -10,7 +10,8 @@ export function shouldWrapLocalOnly(args, env = process.env, platform = process.
 }
 
 export function runInMacSandbox(args) {
-  const result = spawnSync(process.execPath, ['scripts/local-only-runner.js', process.execPath, ...process.argv.slice(1, 2), ...args], {
+  const runnerPath = new URL('../scripts/local-only-runner.js', import.meta.url).pathname;
+  const result = spawnSync(process.execPath, [runnerPath, process.execPath, ...process.argv.slice(1, 2), ...args], {
     stdio: 'inherit',
     cwd: process.cwd(),
     env: process.env,

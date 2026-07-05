@@ -1,96 +1,109 @@
 # ZBrain CLI contract draft
 
-M0 CLI is benchmark-only. M1 may add retrieval CLI if M0 readout approves.
+M1 CLI is local-only and retrieval-focused. `--allow-network` is rejected.
 
-## Command: bench
-
-```bash
-zbrain bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md]
-```
-
-Local-only is always on in M0. `--allow-network` is rejected.
-
-### Manifest v1
+## Common error envelope for `--json`
 
 ```json
 {
   "schemaVersion": 1,
-  "suiteId": "synthetic-m0-v1",
-  "corpusClass": "synthetic",
-  "corpusRoot": "docs",
-  "baselineId": "zbrain-bm25-m0",
-  "thresholds": {},
-  "queries": [
+  "ok": false,
+  "error": {
+    "code": "invalid_request",
+    "message": "query is required",
+    "retryable": false
+  }
+}
+```
+
+## init
+
+```bash
+zbrain init --path <dir> [--force] [--json]
+```
+
+Creates `.zbrain/config.json` and ensures `.zbrain/` is in `.gitignore`. In M1, `<dir>` must stay inside the current project directory.
+
+JSON success:
+
+```json
+{ "configPath": ".zbrain/config.json", "root": "docs" }
+```
+
+## index
+
+```bash
+zbrain index [--json]
+```
+
+Builds `.zbrain/index.sqlite` from markdown.
+
+## query
+
+```bash
+zbrain query <text> [--limit N] [--json]
+```
+
+JSON success:
+
+```json
+{
+  "schemaVersion": 1,
+  "results": [
     {
-      "id": "exact-release-note",
-      "class": "exact_lookup",
-      "query": "release note",
-      "expected": ["releases/v1.md"],
-      "negative": ["plans/v1-plan.md"],
-      "expectedSnippetTerms": ["local-only"]
+      "id": "releases/v1.md",
+      "chunkId": "releases/v1.md#0",
+      "title": "ZBrain v1 release note",
+      "rank": 1,
+      "score": 12.3,
+      "provenance": {
+        "path": "releases/v1.md",
+        "lineStart": 1,
+        "lineEnd": 40,
+        "hash": "abc123"
+      },
+      "snippet": "..."
     }
   ]
 }
 ```
 
-### Query classes
+Query grammar:
 
-Allowed values:
+- Unicode word/number tokenizer
+- lowercase
+- no raw FTS syntax
+- no phrase support in M1
+- OR across sanitized terms
+- empty query is invalid
+- rank is authoritative; score is higher-is-better normalized relevance
 
-- `exact_lookup`
-- `recent_session`
-- `decision_lookup`
-- `project_status`
-- `fuzzy_memory`
-- `acronym_heavy`
-
-### Report v1
-
-Synthetic reports may include per-query rows. Private repo-bound reports are aggregate-only.
-
-Aggregate fields:
-
-- `schemaVersion`
-- `corpusClass`
-- `redacted`
-- `mode`
-- `suite`
-- `indexStats`
-- `metrics`
-- `byClass`
-
-Metrics:
-
-- `recallAt1`
-- `recallAt3`
-- `recallAt10`
-- `mrr`
-- `negativeHitAt10`
-- `provenanceCorrectRate`
-- `snippetUsefulRate`
-- `p50LatencyMs`
-- `p95LatencyMs`
-- `p99LatencyMs`
-- `failureRate`
-
-## Command: privacy-probe
+## get
 
 ```bash
-zbrain privacy-probe
+zbrain get <documentId> [--from N] [--lines N] [--json]
 ```
 
-Runs local-only network-deny probe through the same CLI path.
+`get` accepts document ids from query `id`, not chunk ids.
 
-## Error behavior
+## status
 
-M0 errors are plain CLI errors. M1 will formalize stable JSON error envelopes for retrieval commands.
+```bash
+zbrain status [--json]
+```
 
-### Raw synthetic rows
+Reports DB, SQLite/FTS5, document, chunk, and size status.
 
-`bench` writes aggregate reports by default. Synthetic per-query rows require:
+## bench
+
+```bash
+zbrain bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md]
+```
+
+Synthetic per-query rows require:
 
 ```bash
 --allow-raw-public-report
 ```
 
-Private reports never include per-query rows in repo-bound output.
+Private repo-bound reports are aggregate-only.
