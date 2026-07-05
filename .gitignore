@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+dist/
+.env
+.env.*
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.cache/
+.zbrain/
