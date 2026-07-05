@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "corpusClass": "synthetic",
+  "corpusRoot": "docs",
+  "queries": [
+    {
+      "id": "exact-release-note",
+      "class": "exact_lookup",
+      "query": "external embedding provider local-only provenance",
+      "expected": [
+        "releases/v1.md"
+      ],
+      "negative": [
+        "plans/v1-plan.md"
+      ],
+      "expectedSnippetTerms": [
+        "local-only",
+        "provenance"
+      ]
+    },
+    {
+      "id": "incident-cache-timeout",
+      "class": "decision_lookup",
+      "query": "cache timeout bound concurrency retry once",
+      "expected": [
+        "incidents/cache-timeout.md"
+      ],
+      "negative": [],
+      "expectedSnippetTerms": [
+        "bound concurrency",
+        "retry once"
+      ]
+    },
+    {
+      "id": "recent-session-blue-heron",
+      "class": "recent_session",
+      "query": "blue heron session local-only benchmark",
+      "expected": [
+        "sessions/2026-07-05-sync.md"
+      ],
+      "negative": [],
+      "expectedSnippetTerms": [
+        "blue heron session"
+      ]
+    },
+    {
+      "id": "project-status-copper-ridge",
+      "class": "project_status",
+      "query": "copper ridge status privacy benchmark harness",
+      "expected": [
+        "projects/zbrain-status.md"
+      ],
+      "negative": [],
+      "expectedSnippetTerms": [
+        "copper ridge status"
+      ]
+    },
+    {
+      "id": "fuzzy-memory-lantern-valley",
+      "class": "fuzzy_memory",
+      "query": "lantern valley memory terse plans approval gates",
+      "expected": [
+        "memory/preference.md"
+      ],
+      "negative": [],
+      "expectedSnippetTerms": [
+        "lantern valley memory"
+      ]
+    },
+    {
+      "id": "acronym-heavy-silver-kite",
+      "class": "acronym_heavy",
+      "query": "ADSB silver kite acronym synthetic fixture",
+      "expected": [
+        "acronyms/adsb.md"
+      ],
+      "negative": [],
+      "expectedSnippetTerms": [
+        "silver kite acronym"
+      ]
+    }
+  ],
+  "suiteId": "synthetic-m0-v1",
+  "baselineId": "zbrain-bm25-m0",
+  "thresholds": {
+    "recallAt1": 1,
+    "recallAt10": 1,
+    "negativeHitAt10": 0,
+    "snippetUsefulRate": 1
+  }
+}

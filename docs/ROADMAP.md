@@ -23,13 +23,13 @@ Every milestone follows:
 
 ## Current status
 
-M0 PRD/DD passed council. Next step: finalize M0 writing-plan and get human approval before implementation.
+M0 PRD/DD passed council. M0 implementation scaffold exists locally and is under final implementation/docs council review.
 
 ## Milestones
 
-### M0 — charter, eval harness, privacy proof
+### M0 — charter, eval harness, privacy smoke test
 
-Goal: freeze measurement and prove local-only privacy boundary before retrieval work.
+Goal: freeze measurement and smoke-test local-only privacy boundary before retrieval work.
 
 Outputs:
 
@@ -37,7 +37,7 @@ Outputs:
 - benchmark harness
 - synthetic public fixtures
 - private eval boundary
-- local-only no-network proof
+- local-only no-network smoke test
 - QMD BM25 baseline plan
 - MCP/CLI schema draft
 
