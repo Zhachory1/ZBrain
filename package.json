@@ -1,6 +1,6 @@
 {
   "name": "zbrain",
-  "version": "0.1.0-alpha.0",
+  "version": "0.2.0-alpha.0",
   "description": "Local-first brain/RAG benchmark and retrieval tool",
   "type": "module",
   "bin": {
@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node --test",
     "bench:synthetic": "node scripts/local-only-runner.js node bin/zbrain.js bench --manifest fixtures/synthetic/manifest.json --mode bm25 --json .cache/synthetic-results.json --md .cache/synthetic-results.md",
-    "check": "npm test && npm run bench:synthetic"
+    "check": "npm test && npm run bench:synthetic && npm run bench:semantic",
+    "bench:semantic": "node scripts/local-only-runner.js node bin/zbrain.js bench --manifest fixtures/semantic/manifest.json --mode bm25 --json .cache/semantic-results.json --md .cache/semantic-results.md --allow-raw-public-report && node scripts/semantic-readout.js fixtures/semantic/manifest.json .cache/semantic-results.json .cache/semantic-readout.md"
   },
   "engines": {
     "node": ">=22"

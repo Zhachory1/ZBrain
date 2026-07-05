@@ -38,14 +38,16 @@ npm run bench:synthetic
 Try retrieval on synthetic docs:
 
 ```bash
-cd /tmp
-mkdir zbrain-demo && cd zbrain-demo
-cp -R /Users/zhach/code/ZBrain/fixtures/synthetic/docs ./docs
-node /Users/zhach/code/ZBrain/scripts/local-only-runner.js node /Users/zhach/code/ZBrain/bin/zbrain.js init --path ./docs --json
-node /Users/zhach/code/ZBrain/scripts/local-only-runner.js node /Users/zhach/code/ZBrain/bin/zbrain.js index --json
-node /Users/zhach/code/ZBrain/scripts/local-only-runner.js node /Users/zhach/code/ZBrain/bin/zbrain.js query "silver kite acronym" --json
-node /Users/zhach/code/ZBrain/scripts/local-only-runner.js node /Users/zhach/code/ZBrain/bin/zbrain.js get acronyms/adsb.md --from 1 --lines 4 --json
-node /Users/zhach/code/ZBrain/scripts/local-only-runner.js node /Users/zhach/code/ZBrain/bin/zbrain.js status --json
+REPO=$(pwd)
+DEMO=$(mktemp -d)
+mkdir -p "$DEMO"
+cp -R "$REPO/fixtures/synthetic/docs" "$DEMO/docs"
+cd "$DEMO"
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" init --path ./docs --json
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" index --json
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" query "silver kite acronym" --json
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" get acronyms/adsb.md --from 1 --lines 4 --json
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" status --json
 ```
 
 `.zbrain/` contains local config and raw indexed markdown text in SQLite. It is gitignored.
@@ -62,3 +64,17 @@ This is a privacy smoke test, not formal proof of no possible egress.
 ## Roadmap
 
 Roadmap lives in `docs/ROADMAP.md`; canonical private planning source lives in `~/private-docs/projects/zbrain/`.
+
+## Semantic fixture smoke
+
+M2 alpha adds a synthetic semantic-gap fixture. It validates fixture shape only; it does not recommend embeddings or semantic retrieval.
+
+```bash
+npm run bench:semantic
+```
+
+Outputs:
+
+- `.cache/semantic-results.json`
+- `.cache/semantic-results.md`
+- `.cache/semantic-readout.md`

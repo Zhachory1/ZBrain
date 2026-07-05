@@ -4,7 +4,7 @@ Canonical private roadmap: `~/private-docs/projects/zbrain/plans/2026-07-05-road
 
 ## Approved scope
 
-Only M0/M1 are approved as roadmap scope. M2+ are candidate backlog and need new approval after M1 readout.
+M0/M1 are approved as roadmap scope. M2 alpha semantic fixture smoke is approved as a harness-only milestone after M1 readout. M3+ remain candidate backlog and need new approval.
 
 ## Required milestone flow
 
@@ -23,7 +23,11 @@ Every milestone follows:
 
 ## Current status
 
-M0 PRD/DD passed council. M0 implementation scaffold exists locally and is under final implementation/docs council review.
+M0 completed: benchmark/privacy-smoke scaffold, tagged `v0.0.1-alpha.0`.
+
+M1 completed: local doc-RAG CLI alpha, tagged `v0.1.0-alpha.0`.
+
+M2 alpha in progress: semantic fixture smoke only. It validates fixture shape and does not approve semantic retrieval, embeddings, aliases, or comparators.
 
 ## Milestones
 
@@ -58,7 +62,7 @@ Outputs:
 
 Not approved yet:
 
-- semantic retrieval / embedding adapters
+- semantic retrieval / embedding adapters (implementation still not approved; M2 alpha is fixture smoke only)
 - hybrid ranking
 - code-aware retrieval
 - auto-indexing

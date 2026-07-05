@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "semantic-m0-v1",
+  "corpusClass": "synthetic",
+  "corpusRoot": "docs",
+  "baselineId": "zbrain-bm25-semantic-alpha",
+  "thresholds": {
+    "failureRate": 0,
+    "negativeHitAt10": 1
+  },
+  "queries": [
+    {
+      "id": "paraphrase-auth-access",
+      "class": "fuzzy_memory",
+      "query": "cannot access app after browser token expired",
+      "expected": [
+        "auth/login.md"
+      ],
+      "negative": [
+        "auth/signup.md"
+      ],
+      "expectedSnippetTerms": [
+        "authentication"
+      ],
+      "gapType": "paraphrase",
+      "missCategoryHypothesis": "semantic"
+    },
+    {
+      "id": "paraphrase-billing-close",
+      "class": "fuzzy_memory",
+      "query": "month end money mismatch",
+      "expected": [
+        "billing/invoice.md"
+      ],
+      "negative": [
+        "billing/refund.md"
+      ],
+      "expectedSnippetTerms": [
+        "reconciliation"
+      ],
+      "gapType": "paraphrase",
+      "missCategoryHypothesis": "semantic"
+    },
+    {
+      "id": "paraphrase-outage-review",
+      "class": "fuzzy_memory",
+      "query": "service failure retrospective",
+      "expected": [
+        "ops/incident.md"
+      ],
+      "negative": [
+        "ops/oncall.md"
+      ],
+      "expectedSnippetTerms": [
+        "post-incident"
+      ],
+      "gapType": "paraphrase",
+      "missCategoryHypothesis": "semantic"
+    },
+    {
+      "id": "alias-signin-login",
+      "class": "fuzzy_memory",
+      "query": "sign-in troubleshooting",
+      "expected": [
+        "auth/login.md"
+      ],
+      "negative": [
+        "auth/signup.md"
+      ],
+      "expectedSnippetTerms": [
+        "login"
+      ],
+      "gapType": "alias",
+      "missCategoryHypothesis": "alias"
+    },
+    {
+      "id": "alias-runbook-handoff",
+      "class": "project_status",
+      "query": "shift transfer notes",
+      "expected": [
+        "ops/oncall.md"
+      ],
+      "negative": [
+        "ops/incident.md"
+      ],
+      "expectedSnippetTerms": [
+        "handoff"
+      ],
+      "gapType": "alias",
+      "missCategoryHypothesis": "alias"
+    },
+    {
+      "id": "alias-money-return-refund",
+      "class": "fuzzy_memory",
+      "query": "money return support approval",
+      "expected": [
+        "billing/refund.md"
+      ],
+      "negative": [
+        "billing/invoice.md"
+      ],
+      "expectedSnippetTerms": [
+        "refund"
+      ],
+      "gapType": "alias",
+      "missCategoryHypothesis": "alias"
+    },
+    {
+      "id": "conceptual-search-quality",
+      "class": "decision_lookup",
+      "query": "how do we make search answers trustworthy",
+      "expected": [
+        "search/relevance.md"
+      ],
+      "negative": [
+        "search/indexing.md"
+      ],
+      "expectedSnippetTerms": [
+        "provenance"
+      ],
+      "gapType": "conceptual",
+      "missCategoryHypothesis": "semantic"
+    },
+    {
+      "id": "conceptual-freshness",
+      "class": "decision_lookup",
+      "query": "why new edits might not appear",
+      "expected": [
+        "search/indexing.md"
+      ],
+      "negative": [
+        "search/relevance.md"
+      ],
+      "expectedSnippetTerms": [
+        "freshness"
+      ],
+      "gapType": "conceptual",
+      "missCategoryHypothesis": "semantic"
+    },
+    {
+      "id": "conceptual-security-escrow",
+      "class": "acronym_heavy",
+      "query": "laptop recovery key escrow",
+      "expected": [
+        "near-miss/apple-company.md"
+      ],
+      "negative": [
+        "near-miss/apple-fruit.md"
+      ],
+      "expectedSnippetTerms": [
+        "recovery key"
+      ],
+      "gapType": "conceptual",
+      "missCategoryHypothesis": "semantic"
+    },
+    {
+      "id": "near-miss-apple-fruit",
+      "class": "exact_lookup",
+      "query": "apple cool storage orchard crate",
+      "expected": [
+        "near-miss/apple-fruit.md"
+      ],
+      "negative": [
+        "near-miss/apple-company.md"
+      ],
+      "expectedSnippetTerms": [
+        "orchard crate"
+      ],
+      "gapType": "negative-near-miss",
+      "missCategoryHypothesis": "lexical"
+    },
+    {
+      "id": "near-miss-apple-device",
+      "class": "exact_lookup",
+      "query": "apple laptops device enrollment mac fleet",
+      "expected": [
+        "near-miss/apple-company.md"
+      ],
+      "negative": [
+        "near-miss/apple-fruit.md"
+      ],
+      "expectedSnippetTerms": [
+        "mac fleet"
+      ],
+      "gapType": "negative-near-miss",
+      "missCategoryHypothesis": "lexical"
+    },
+    {
+      "id": "near-miss-search-index",
+      "class": "exact_lookup",
+      "query": "search stale snippets silver freshness",
+      "expected": [
+        "search/indexing.md"
+      ],
+      "negative": [
+        "search/relevance.md"
+      ],
+      "expectedSnippetTerms": [
+        "silver freshness"
+      ],
+      "gapType": "negative-near-miss",
+      "missCategoryHypothesis": "lexical"
+    }
+  ]
+}

@@ -19,3 +19,18 @@ npm run bench:synthetic
 ```
 
 This writes aggregate reports to `.cache/synthetic-results.{json,md}` under the local-only runner.
+
+## Semantic fixture smoke
+
+M2 alpha includes a synthetic semantic-gap suite:
+
+```bash
+npm run bench:semantic
+```
+
+Decision values:
+
+- `fixture-shape-valid`
+- `fixture-shape-invalid`
+
+This readout validates the fixture shape only. Miss hypotheses are author-provided and reported as candidate-unverified. It does not recommend embeddings, alias tuning, or comparators.
