@@ -2,17 +2,67 @@
 
 Canonical private roadmap: `~/private-docs/projects/zbrain/plans/2026-07-05-roadmap.md`.
 
-Public-safe milestone sketch:
+## Approved scope
 
-1. M0 — project charter, repo scaffold, eval harness
-2. M1 — local doc RAG MVP
-3. M2 — external embedding adapters
-4. M3 — pgvector/Postgres storage option
-5. M4 — code-aware retrieval
-6. M5 — auto-indexing and freshness
-7. M6 — briefings and EOD summaries
-8. M7 — MCP/server integration
-9. M8 — privacy/security hardening
-10. M9 — beta release
+Only M0/M1 are approved as roadmap scope. M2+ are candidate backlog and need new approval after M1 readout.
 
-Each milestone follows: PRD → DD → council review → plan → implementation → council review → merge to main → release.
+## Required milestone flow
+
+Every milestone follows:
+
+1. PRD
+2. DD
+3. Council review
+4. writing-plans
+5. Implementation
+6. code-review
+7. Docs
+8. Council review
+9. Push to main
+10. Release/readout
+
+## Current status
+
+M0 PRD/DD passed council. Next step: finalize M0 writing-plan and get human approval before implementation.
+
+## Milestones
+
+### M0 — charter, eval harness, privacy proof
+
+Goal: freeze measurement and prove local-only privacy boundary before retrieval work.
+
+Outputs:
+
+- product charter
+- benchmark harness
+- synthetic public fixtures
+- private eval boundary
+- local-only no-network proof
+- QMD BM25 baseline plan
+- MCP/CLI schema draft
+
+### M1 — thin local doc-RAG MVP
+
+Goal: smallest useful local markdown retrieval tool.
+
+Outputs:
+
+- collection config
+- markdown crawler/chunker
+- SQLite BM25 index
+- `query`, `get`, `status` CLI
+- optional stdio MCP shim if it does not delay retrieval readout
+- provenance and line ranges
+
+### Candidate backlog
+
+Not approved yet:
+
+- semantic retrieval / embedding adapters
+- hybrid ranking
+- code-aware retrieval
+- auto-indexing
+- pgvector/Postgres
+- briefings/EOD summaries
+- Me Write/RoktCode integration
+- enterprise hardening
