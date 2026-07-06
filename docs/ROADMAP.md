@@ -4,7 +4,7 @@ Canonical private roadmap: `~/private-docs/projects/zbrain/plans/2026-07-05-road
 
 ## Approved scope
 
-M0/M1 are approved as roadmap scope. M2 semantic fixture smoke is approved as a harness-only milestone after M1 readout. M3+ remain candidate backlog and need new approval.
+M0/M1 are approved as roadmap scope. M2 semantic fixture smoke is approved as a harness-only milestone after M1 readout. M3B+ remain candidate backlog and need new approval.
 
 ## Required milestone flow
 
