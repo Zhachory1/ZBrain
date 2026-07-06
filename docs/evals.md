@@ -22,7 +22,7 @@ This writes aggregate reports to `.cache/synthetic-results.{json,md}` under the 
 
 ## Semantic fixture smoke
 
-M2 alpha includes a synthetic semantic-gap suite:
+M2 includes a synthetic semantic-gap suite:
 
 ```bash
 npm run bench:semantic

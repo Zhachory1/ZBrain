@@ -44,7 +44,7 @@ const lines = [
   ...Object.entries(missGroups).map(([k, v]) => `- ${k}: ${v}`),
   ...(Object.keys(missGroups).length ? [] : ['- none']),
   '',
-  'M2 alpha validates fixture shape only. Metrics may show BM25 misses, but candidate miss hypotheses are unverified and do not recommend embeddings, alias tuning, or comparators. Private semantic runs and comparator baselines require a later approved milestone.',
+  'M2 validates fixture shape only. Metrics may show BM25 misses, but candidate miss hypotheses are unverified and do not recommend embeddings, alias tuning, or comparators. Private semantic runs and comparator baselines require a later approved milestone.',
   '',
 ];
 mkdirSync(path.dirname(outPath), { recursive: true });

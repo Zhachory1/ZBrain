@@ -3,7 +3,7 @@
   "suiteId": "semantic-m0-v1",
   "corpusClass": "synthetic",
   "corpusRoot": "docs",
-  "baselineId": "zbrain-bm25-semantic-alpha",
+  "baselineId": "zbrain-bm25-semantic-v0.2.0",
   "thresholds": {
     "failureRate": 0,
     "negativeHitAt10": 1

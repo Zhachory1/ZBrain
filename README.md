@@ -6,7 +6,7 @@ ZBrain aims to merge useful ideas from QMD, gbrain, and Codescry while keeping t
 
 ## Status
 
-M1 local doc-RAG CLI exists as alpha code:
+M1 local doc-RAG CLI exists:
 
 - project-local `.zbrain/`
 - SQLite/FTS5 index
@@ -67,7 +67,7 @@ Roadmap lives in `docs/ROADMAP.md`; canonical private planning source lives in `
 
 ## Semantic fixture smoke
 
-M2 alpha adds a synthetic semantic-gap fixture. It validates fixture shape only; it does not recommend embeddings or semantic retrieval.
+M2 adds a synthetic semantic-gap fixture. It validates fixture shape only; it does not recommend embeddings or semantic retrieval.
 
 ```bash
 npm run bench:semantic
