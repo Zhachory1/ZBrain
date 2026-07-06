@@ -1,6 +1,6 @@
-# ZBrain CLI contract draft
+# ZBrain CLI contract
 
-M1 CLI is local-only and retrieval-focused. `--allow-network` is rejected.
+M4 CLI is local-only and retrieval-focused. `--allow-network` is rejected.
 
 ## Common error envelope for `--json`
 
@@ -22,9 +22,9 @@ M1 CLI is local-only and retrieval-focused. `--allow-network` is rejected.
 zbrain init --path <dir> [--force] [--json]
 ```
 
-Creates `.zbrain/config.json` and ensures `.zbrain/` is in `.gitignore`. In M1, `<dir>` must stay inside the current project directory.
+Creates `.zbrain/config.json` and ensures `.zbrain/` is in `.gitignore`. In M1/M4, `<dir>` must stay inside the current project directory.
 
-JSON success:
+Success:
 
 ```json
 { "configPath": ".zbrain/config.json", "root": "docs" }
@@ -41,10 +41,10 @@ Builds `.zbrain/index.sqlite` from markdown.
 ## query
 
 ```bash
-zbrain query <text> [--limit N] [--json]
+zbrain query <text> [--limit N] [--json] [--no-aliases] [--explain]
 ```
 
-JSON success:
+Result:
 
 ```json
 {
@@ -73,7 +73,7 @@ Query grammar:
 - Unicode word/number tokenizer
 - lowercase
 - no raw FTS syntax
-- no phrase support in M1
+- no phrase support in M1/M4 FTS
 - OR across sanitized terms
 - empty query is invalid
 - rank is authoritative; score is higher-is-better normalized relevance
@@ -107,3 +107,51 @@ Synthetic per-query rows require:
 ```
 
 Private repo-bound reports are aggregate-only.
+
+## Alias config
+
+M4 supports explicit query-time aliases in `.zbrain/config.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "root": "docs",
+  "aliases": {
+    "sign-in": ["login", "authentication"]
+  }
+}
+```
+
+Validation limits:
+
+- max aliases: 200
+- max expansions per alias: 10
+- max key length: 80 chars
+- max value length: 80 chars
+- string keys and string-array values only
+- no regex
+
+Matching:
+
+- exact normalized phrase match
+- ordered/adjacent terms only
+- no token-anywhere matching
+
+Flags:
+
+- `--no-aliases`: bypass expansion
+- `--explain --json`: include `query.aliasesApplied`
+
+Example explain shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "query": {
+    "aliasesApplied": [
+      { "term": "sign-in", "expanded": ["login", "authentication"] }
+    ]
+  },
+  "results": []
+}
+```

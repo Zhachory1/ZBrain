@@ -32,3 +32,12 @@ function fakeAttestation(runner, token) {
   writeFileSync(file, JSON.stringify({ runner, token }));
   return file;
 }
+
+
+test('CLI accepts --help and -h', () => {
+  for (const flag of ['--help', '-h']) {
+    const result = spawnSync(process.execPath, [bin, flag], { cwd: process.cwd(), encoding: 'utf8' });
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /Commands:/);
+  }
+});

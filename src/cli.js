@@ -1,18 +1,22 @@
 import { runBenchmark, writeReports } from './bench.js';
 import { assertNoNetworkAvailable, failIfUnsupportedLocalOnly, runInMacSandbox, shouldWrapLocalOnly } from './privacy.js';
-import { getDocument, indexProject, initProject, queryIndex, statusIndex } from './store.js';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { expandAliases } from './aliases.js';
+import { getDocument, indexProject, initProject, loadConfig, queryIndex, statusIndex } from './store.js';
 
 function parseArgs(args) {
   const parsed = { _: [] };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
+    if (arg === '--help' || arg === '-h') { parsed._.push('help'); continue; }
     if (!arg.startsWith('--')) {
       parsed._.push(arg);
       continue;
     }
     if (arg === '--local-only') continue; // legacy alias; local-only is default
     if (arg === '--allow-network') throw new Error('--allow-network is not supported in M0/M1');
-    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force') {
+    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain') {
       parsed[arg.slice(2)] = true;
       continue;
     }
@@ -71,7 +75,20 @@ export async function main(args) {
   }
   if (command === 'query') {
     const query = parsed._.slice(1).join(' ');
-    const result = queryIndex({ query, limit: parsed.limit });
+    let queryForSearch = query;
+    let aliasInfo = { aliasesApplied: [] };
+    if (!parsed['no-aliases']) {
+      const configPath = path.join(process.cwd(), '.zbrain/config.json');
+      if (existsSync(configPath)) {
+        const config = loadConfig();
+        aliasInfo = expandAliases(query, config.aliases);
+        queryForSearch = aliasInfo.expandedQuery;
+      }
+    }
+    const result = queryIndex({ query: queryForSearch, limit: parsed.limit });
+    if (parsed.explain && parsed.json) {
+      result.query = { aliasesApplied: aliasInfo.aliasesApplied };
+    }
     print(result, parsed.json);
     return;
   }
@@ -94,5 +111,5 @@ function print(value, json = false) {
 }
 
 function printHelp() {
-  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
+  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
 }

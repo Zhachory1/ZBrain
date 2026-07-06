@@ -6,9 +6,10 @@ ZBrain aims to merge useful ideas from QMD, gbrain, and Codescry while keeping t
 
 ## Status
 
-M1 local doc-RAG CLI exists:
+M4 local doc-RAG CLI exists:
 
 - project-local `.zbrain/`
+- explicit local query aliases
 - SQLite/FTS5 index
 - `init`, `index`, `query`, `get`, `status`
 - synthetic benchmark harness
@@ -78,3 +79,38 @@ Outputs:
 - `.cache/semantic-results.json`
 - `.cache/semantic-results.md`
 - `.cache/semantic-readout.md`
+
+
+## Alias expansion
+
+Aliases are explicit local config in `.zbrain/config.json`. They are query-time only and never generated automatically.
+
+```json
+{
+  "schemaVersion": 1,
+  "root": "docs",
+  "aliases": {
+    "sign-in": ["login", "authentication"]
+  }
+}
+```
+
+Use aliases:
+
+```bash
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" query "sign-in problem" --json
+```
+
+Disable aliases for one query:
+
+```bash
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" query "sign-in problem" --no-aliases --json
+```
+
+Inspect aliases applied:
+
+```bash
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" query "sign-in problem" --explain --json
+```
+
+Aliases may reveal private vocabulary. `.zbrain/` is gitignored.
