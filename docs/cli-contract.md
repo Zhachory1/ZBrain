@@ -155,3 +155,32 @@ Example explain shape:
   "results": []
 }
 ```
+
+## embed
+
+```bash
+zbrain embed [--json]
+```
+
+Embeds current indexed chunks using configured local Ollama provider.
+
+## vquery
+
+```bash
+zbrain vquery <text> [--limit N] [--json]
+```
+
+Returns vector/cosine ranked results with the same result shape as `query` plus:
+
+```json
+{
+  "query": {
+    "retrievalMode": "vector",
+    "scoreKind": "cosine",
+    "embeddingModel": "mxbai-embed-large:latest",
+    "dims": 1024
+  }
+}
+```
+
+Embedding config supports local Ollama loopback only.

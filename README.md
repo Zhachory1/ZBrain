@@ -114,3 +114,35 @@ node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" query "sign
 ```
 
 Aliases may reveal private vocabulary. `.zbrain/` is gitignored.
+
+## Local embeddings
+
+M6 adds local Ollama embeddings for markdown chunks.
+
+Configure `.zbrain/config.json` (defaults shown):
+
+```json
+{
+  "schemaVersion": 1,
+  "root": "docs",
+  "embeddings": {
+    "provider": "ollama",
+    "baseUrl": "http://127.0.0.1:11434",
+    "model": "mxbai-embed-large:latest"
+  }
+}
+```
+
+Embed chunks:
+
+```bash
+zbrain embed --json
+```
+
+Vector query:
+
+```bash
+zbrain vquery "manual release workflow" --json
+```
+
+ZBrain only allows loopback Ollama URLs. Chunk/query text is sent to your local Ollama process; if your Ollama setup forwards remotely, that is outside ZBrain's privacy guarantee.

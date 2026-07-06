@@ -3,7 +3,7 @@ import { assertNoNetworkAvailable, failIfUnsupportedLocalOnly, runInMacSandbox, 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { expandAliases } from './aliases.js';
-import { getDocument, indexProject, initProject, loadConfig, queryIndex, statusIndex } from './store.js';
+import { embedProject, getDocument, indexProject, initProject, loadConfig, queryIndex, statusIndex, vqueryIndex } from './store.js';
 
 function parseArgs(args) {
   const parsed = { _: [] };
@@ -35,10 +35,14 @@ function parseArgs(args) {
 }
 
 export async function main(args) {
-  if (args.includes('--allow-network')) throw new Error('--allow-network is not supported in M0/M1');
-  if (shouldWrapLocalOnly(args)) runInMacSandbox(args);
-  failIfUnsupportedLocalOnly();
-  await assertNoNetworkAvailable();
+  if (args.includes('--allow-network')) throw new Error('--allow-network is not supported');
+  const earlyCommand = args.find((arg) => !arg.startsWith('--'));
+  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery';
+  if (!loopbackCommand) {
+    if (shouldWrapLocalOnly(args)) runInMacSandbox(args);
+    failIfUnsupportedLocalOnly();
+    await assertNoNetworkAvailable();
+  }
 
   const parsed = parseArgs(args);
   const command = parsed._[0];
@@ -102,6 +106,16 @@ export async function main(args) {
     print(statusIndex(), parsed.json);
     return;
   }
+  if (command === 'embed') {
+    print(await embedProject(), parsed.json);
+    return;
+  }
+  if (command === 'vquery') {
+    const query = parsed._.slice(1).join(' ');
+    print(await vqueryIndex({ query, limit: parsed.limit }), parsed.json);
+    return;
+  }
+
   throw new Error(`unknown command: ${command}`);
 }
 
@@ -111,5 +125,7 @@ function print(value, json = false) {
 }
 
 function printHelp() {
-  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
+  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]
+  embed [--json]
+  vquery <text> [--limit N] [--json]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
 }

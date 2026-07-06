@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { DEFAULT_CAPS, tokenize, titleFromMarkdown, walkMarkdown } from './bm25.js';
+import { cosine, embedText, resolveEmbeddingConfig } from './embeddings.js';
 
 export const ZBRAIN_DIR = '.zbrain';
 export const CONFIG_PATH = '.zbrain/config.json';
@@ -130,6 +131,19 @@ CREATE VIRTUAL TABLE chunks_fts USING fts5(
   title,
   text
 );
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+  chunk_id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  line_start INTEGER NOT NULL,
+  line_end INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  text TEXT NOT NULL,
+  model TEXT NOT NULL,
+  dims INTEGER NOT NULL,
+  embedding_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;
 }
 
@@ -201,6 +215,47 @@ export function statusIndex({ cwd = process.cwd(), dbPath = path.join(cwd, DB_PA
       sqliteVersion: sqliteVersion(),
       fts5: fts5Available(),
     },
+  };
+}
+
+
+export async function embedProject({ cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) } = {}) {
+  const config = loadConfig(cwd);
+  const embeddingConfig = resolveEmbeddingConfig(config);
+  const chunks = runSqlJson(dbPath, `SELECT chunk_id, document_id, path, line_start, line_end, title, text FROM chunks_fts;`);
+  let embedded = 0;
+  for (const chunk of chunks) {
+    const prompt = `title: ${chunk.title}\npath: ${chunk.path}\ntext: ${chunk.text}`;
+    const { embedding, model } = await embedText(prompt, embeddingConfig);
+    runSql(dbPath, `INSERT OR REPLACE INTO chunk_embeddings(chunk_id,document_id,path,line_start,line_end,title,text,model,dims,embedding_json,updated_at) VALUES (${q(chunk.chunk_id)},${q(chunk.document_id)},${q(chunk.path)},${Number(chunk.line_start)},${Number(chunk.line_end)},${q(chunk.title)},${q(chunk.text)},${q(model)},${embedding.length},${q(JSON.stringify(embedding))},${q(new Date().toISOString())});`);
+    embedded += 1;
+  }
+  return { schemaVersion: 1, embedded, model: embeddingConfig.model };
+}
+
+export async function vqueryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) }) {
+  if (!query) throw new Error('query is required');
+  const config = loadConfig(cwd);
+  const embeddingConfig = resolveEmbeddingConfig(config);
+  const { embedding, model } = await embedText(query, embeddingConfig);
+  const rows = runSqlJson(dbPath, `SELECT chunk_id, document_id, path, line_start, line_end, title, text, model, dims, embedding_json FROM chunk_embeddings WHERE model = ${q(model)};`);
+  if (rows.length === 0) throw new Error('no embeddings found. Run: zbrain embed');
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
+  const scored = rows.map((row) => ({ row, score: cosine(embedding, JSON.parse(row.embedding_json)) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, safeLimit);
+  return {
+    schemaVersion: 1,
+    query: { retrievalMode: 'vector', scoreKind: 'cosine', embeddingModel: model, dims: embedding.length },
+    results: scored.map((hit, i) => ({
+      id: hit.row.document_id,
+      chunkId: hit.row.chunk_id,
+      title: hit.row.title,
+      rank: i + 1,
+      score: hit.score,
+      provenance: { path: hit.row.path, lineStart: Number(hit.row.line_start), lineEnd: Number(hit.row.line_end) },
+      snippet: hit.row.text,
+    })),
   };
 }
 
