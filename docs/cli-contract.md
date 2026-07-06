@@ -184,3 +184,28 @@ Returns vector/cosine ranked results with the same result shape as `query` plus:
 ```
 
 Embedding config supports local Ollama loopback only.
+
+## tune
+
+```bash
+zbrain tune --manifest <manifest.json> --output <proposal.json> [--json]
+```
+
+Runs BM25 benchmark over the manifest and writes editable alias suggestions for missed queries. It does not modify `.zbrain/config.json`.
+
+Private manifests must write output under `~/.zbrain/tuning/`.
+
+Proposal shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "aliases": {
+    "sign problem": ["login", "authentication"]
+  },
+  "evidence": {
+    "sign problem": { "queryId": "q1", "rank": null }
+  },
+  "warning": "manual_review_required"
+}
+```

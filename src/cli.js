@@ -1,8 +1,8 @@
-import { runBenchmark, writeReports } from './bench.js';
+import { loadManifest, runBenchmark, writeReports } from './bench.js';
 import { assertNoNetworkAvailable, failIfUnsupportedLocalOnly, runInMacSandbox, shouldWrapLocalOnly } from './privacy.js';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { expandAliases } from './aliases.js';
+import { expandAliases, validateAliases } from './aliases.js';
 import { embedProject, getDocument, indexProject, initProject, loadConfig, queryIndex, statusIndex, vqueryIndex } from './store.js';
 
 function parseArgs(args) {
@@ -106,6 +106,24 @@ export async function main(args) {
     print(statusIndex(), parsed.json);
     return;
   }
+
+  if (command === 'tune') {
+    if (!parsed.manifest) throw new Error('--manifest is required');
+    if (!parsed.output) throw new Error('--output is required');
+    const result = await runBenchmark({ manifestPath: parsed.manifest, mode: 'bm25' });
+    const proposal = buildAliasProposal(result.manifest, result.rows, parsed.manifest);
+    const output = path.resolve(parsed.output);
+    if (result.manifest.corpusClass === 'private') {
+      const allowedRoot = path.resolve(process.env.HOME || '', '.zbrain/tuning');
+      const rel = path.relative(allowedRoot, output);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('private tune output must be under ~/.zbrain/tuning');
+    }
+    mkdirSync(path.dirname(output), { recursive: true });
+    writeFileSync(output, JSON.stringify(proposal, null, 2));
+    print({ schemaVersion: 1, output, proposals: Object.keys(proposal.aliases).length }, parsed.json);
+    return;
+  }
+
   if (command === 'embed') {
     print(await embedProject(), parsed.json);
     return;
@@ -119,6 +137,48 @@ export async function main(args) {
   throw new Error(`unknown command: ${command}`);
 }
 
+
+function buildAliasProposal(manifest, rows, manifestPath) {
+  const manifestDir = path.dirname(path.resolve(manifestPath));
+  const corpusRoot = path.resolve(manifestDir, manifest.corpusRoot || '.');
+  const aliases = {};
+  const evidence = {};
+  for (const row of rows) {
+    if (row.rank !== null) continue;
+    const query = manifest.queries.find((q) => q.id === row.id);
+    if (!query) continue;
+    const key = aliasKey(query.query);
+    const values = aliasValues(corpusRoot, query.expected || []);
+    if (!key || values.length === 0) continue;
+    aliases[key] = values;
+    evidence[key] = { queryId: query.id, rank: row.rank };
+  }
+  validateAliases(aliases);
+  return { schemaVersion: 1, aliases, evidence, warning: 'manual_review_required' };
+}
+
+const STOPWORDS = new Set(['the','a','an','to','for','of','and','or','in','on','where','what','which','did','we','with','when','how','why','is','are','was']);
+function aliasKey(query) {
+  const terms = query.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._-]*/gu) || [];
+  return terms.filter((t) => !STOPWORDS.has(t) && t.length > 2).slice(0, 4).join(' ').slice(0, 80);
+}
+function aliasValues(root, expected) {
+  const values = [];
+  for (const doc of expected) {
+    const file = path.join(root, doc);
+    if (!existsSync(file)) continue;
+    const body = readFileSync(file, 'utf8');
+    const title = (body.split('\n').find((l) => l.startsWith('# ')) || '').replace(/^#\s+/, '');
+    const text = `${title} ${doc}`;
+    const terms = text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._-]*/gu) || [];
+    for (const t of terms) {
+      if (!STOPWORDS.has(t) && t.length > 2 && !values.includes(t)) values.push(t);
+      if (values.length >= 10) return values;
+    }
+  }
+  return values;
+}
+
 function print(value, json = false) {
   if (json) console.log(JSON.stringify(value, null, 2));
   else console.log(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
@@ -127,5 +187,6 @@ function print(value, json = false) {
 function printHelp() {
   console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]
   embed [--json]
-  vquery <text> [--limit N] [--json]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
+  vquery <text> [--limit N] [--json]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]
+  bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
 }

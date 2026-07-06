@@ -1,6 +1,6 @@
 {
   "name": "zbrain",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Local-first brain/RAG benchmark and retrieval tool",
   "type": "module",
   "bin": {

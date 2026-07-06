@@ -146,3 +146,16 @@ zbrain vquery "manual release workflow" --json
 ```
 
 ZBrain only allows loopback Ollama URLs. Chunk/query text is sent to your local Ollama process; if your Ollama setup forwards remotely, that is outside ZBrain's privacy guarantee.
+
+## Retrieval calibration
+
+M8 adds local alias proposal generation. It never edits config automatically.
+
+```bash
+node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" tune \
+  --manifest fixtures/synthetic/manifest.json \
+  --output "$DEMO/proposal.json" \
+  --json
+```
+
+Private manifests must write proposals under `~/.zbrain/tuning/`.
