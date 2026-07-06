@@ -64,7 +64,6 @@ Not approved yet:
 
 - semantic retrieval / embedding adapters (implementation still not approved)
 - hybrid ranking
-- code-aware retrieval
 - auto-indexing
 - pgvector/Postgres
 - briefings/EOD summaries

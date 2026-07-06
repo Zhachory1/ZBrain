@@ -1,12 +1,12 @@
 # ZBrain
 
-Local-first brain/RAG system for docs, code, and daily work context.
+Local-first markdown/doc RAG system for private work context.
 
-ZBrain aims to merge useful ideas from QMD, gbrain, and Codescry while keeping the default path local and auditable.
+ZBrain aims to merge useful doc-retrieval ideas from QMD and gbrain while keeping the default path local and auditable. It indexes markdown only; markdown files inside code folders are fine, raw code retrieval is out of scope.
 
 ## Status
 
-M4 local doc-RAG CLI exists:
+M4 local markdown/doc-RAG CLI exists:
 
 - project-local `.zbrain/`
 - explicit local query aliases
