@@ -276,7 +276,7 @@ function fts5Available() {
 }
 
 function runSql(db, sql) {
-  const result = spawnSync('sqlite3', [db], { input: sql, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: 10_000 });
+  const result = spawnSync('sqlite3', [db], { input: sql, encoding: 'utf8', maxBuffer: 100 * 1024 * 1024, timeout: 10_000 });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error((result.stderr || result.stdout || 'sqlite3 failed').trim());
   return result.stdout;
