@@ -22,7 +22,7 @@ export async function embedText(text, config, { timeoutMs = 30_000 } = {}) {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: embeddings.model, prompt: String(text).slice(0, 1000) }),
+      body: JSON.stringify({ model: embeddings.model, prompt: String(text).slice(0, 500) }),
       signal: controller.signal,
     });
     if (!response.ok) {
