@@ -159,3 +159,19 @@ node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" tune \
 ```
 
 Private manifests must write proposals under `~/.zbrain/tuning/`.
+
+## Intent-aware query
+
+`hquery` chooses a retrieval path from the query shape:
+
+- exact/session/ticket/version-like queries use BM25 + aliases
+- broad/topical queries use vector retrieval
+- explicit `--mode hybrid` runs offline RRF over BM25 and vector results
+
+```bash
+zbrain hquery "session 2026-06-30 mewrite release" --json
+zbrain hquery "papers about quantum materials" --json
+zbrain hquery "papers about quantum materials" --mode hybrid --explain --json
+```
+
+`hquery` is explicit; regular `query` behavior is unchanged.

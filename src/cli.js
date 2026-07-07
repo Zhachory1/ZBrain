@@ -3,6 +3,7 @@ import { assertNoNetworkAvailable, failIfUnsupportedLocalOnly, runInMacSandbox, 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expandAliases, validateAliases } from './aliases.js';
+import { classifyIntent, mergeHybridResults } from './hybrid.js';
 import { embedProject, getDocument, indexProject, initProject, loadConfig, queryIndex, statusIndex, vqueryIndex } from './store.js';
 
 function parseArgs(args) {
@@ -37,7 +38,7 @@ function parseArgs(args) {
 export async function main(args) {
   if (args.includes('--allow-network')) throw new Error('--allow-network is not supported');
   const earlyCommand = args.find((arg) => !arg.startsWith('--'));
-  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery';
+  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery';
   if (!loopbackCommand) {
     if (shouldWrapLocalOnly(args)) runInMacSandbox(args);
     failIfUnsupportedLocalOnly();
@@ -134,6 +135,45 @@ export async function main(args) {
     return;
   }
 
+  if (command === 'hquery') {
+    const query = parsed._.slice(1).join(' ');
+    const mode = parsed.mode || classifyIntent(query);
+    let queryForSearch = query;
+    let aliasInfo = { aliasesApplied: [] };
+    if (!parsed['no-aliases']) {
+      const configPath = path.join(process.cwd(), '.zbrain/config.json');
+      if (existsSync(configPath)) {
+        const config = loadConfig();
+        aliasInfo = expandAliases(query, config.aliases);
+        queryForSearch = aliasInfo.expandedQuery;
+      }
+    }
+    if (mode === 'exact' || mode === 'bm25') {
+      const result = queryIndex({ query: queryForSearch, limit: parsed.limit });
+      result.query = { retrievalMode: 'bm25', intent: mode, aliasesApplied: parsed.explain ? aliasInfo.aliasesApplied : undefined };
+      if (!parsed.explain) delete result.query.aliasesApplied;
+      print(result, parsed.json);
+      return;
+    }
+    if (mode === 'broad' || mode === 'vector') {
+      const result = await vqueryIndex({ query, limit: parsed.limit });
+      result.query.intent = mode;
+      print(result, parsed.json);
+      return;
+    }
+    if (mode === 'hybrid') {
+      const bm25 = queryIndex({ query: queryForSearch, limit: parsed.limit || 10 }).results;
+      const vector = (await vqueryIndex({ query, limit: parsed.limit || 10 })).results;
+      const results = mergeHybridResults({ bm25, vector, limit: Math.max(1, Math.min(Number(parsed.limit) || 10, 100)) });
+      const output = { schemaVersion: 1, query: { retrievalMode: 'hybrid', intent: mode, sources: ['bm25', 'vector'], aliasesApplied: parsed.explain ? aliasInfo.aliasesApplied : undefined }, results };
+      if (!parsed.explain) delete output.query.aliasesApplied;
+      print(output, parsed.json);
+      return;
+    }
+    throw new Error(`unknown hquery mode: ${mode}`);
+  }
+
+
   throw new Error(`unknown command: ${command}`);
 }
 
@@ -187,6 +227,7 @@ function print(value, json = false) {
 function printHelp() {
   console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]
   embed [--json]
-  vquery <text> [--limit N] [--json]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]
+  vquery <text> [--limit N] [--json]
+  hquery <text> [--mode exact|broad|hybrid] [--limit N] [--json] [--explain]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]
   bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
 }
