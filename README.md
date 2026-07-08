@@ -8,10 +8,10 @@ ZBrain aims to merge useful doc-retrieval ideas from QMD and gbrain while keepin
 
 M4 local markdown/doc-RAG CLI exists:
 
-- project-local `.zbrain/`
+- project-local or full-brain `.zbrain/`
 - explicit local query aliases
 - SQLite/FTS5 index
-- `init`, `index`, `query`, `get`, `status`
+- `init`, `preflight`, `import`, `index`, `query`, `get`, `status`
 - synthetic benchmark harness
 - local-only runner smoke test
 
@@ -51,7 +51,40 @@ node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" get acronym
 node "$REPO/scripts/local-only-runner.js" node "$REPO/bin/zbrain.js" status --json
 ```
 
-`.zbrain/` contains local config and raw indexed markdown text in SQLite. It is gitignored.
+`.zbrain/` contains local config and raw indexed markdown text in SQLite. It is gitignored and should be treated as sensitive local data.
+
+## Full brain import
+
+M18 adds a safe first step toward indexing `~/private-docs` as one local brain.
+
+Preflight scans aggregate corpus shape without building an index. Default output avoids file paths; use `--include-paths` only when you need relative largest/skipped file paths locally.
+
+```bash
+zbrain preflight ~/private-docs --json
+zbrain preflight ~/private-docs --include-paths --json
+```
+
+Import creates or reuses `~/private-docs/.zbrain/config.json`, ensures `~/private-docs/.gitignore` contains `.zbrain/`, and builds `~/private-docs/.zbrain/index.sqlite`.
+
+```bash
+zbrain import ~/private-docs --json
+cd ~/private-docs
+zbrain query "what did we decide about vector-heavy hybrid?" --json
+```
+
+`import` is non-destructive by default. It fails if the target has an incompatible `.zbrain/config.json` or an existing `.zbrain/index.sqlite`; pass `--force` to back up and overwrite local ZBrain state.
+
+The index stores raw Markdown bodies/chunks locally in SQLite. It is not uploaded by ZBrain, but do not commit or share `.zbrain/`.
+
+Run embeddings only after import succeeds:
+
+```bash
+cd ~/private-docs
+zbrain embed --json
+zbrain hquery "what did we decide about vector-heavy hybrid?" --json
+```
+
+`embed --stale` is planned for a later milestone.
 
 ## Local-only behavior
 

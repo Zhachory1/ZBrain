@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expandAliases, validateAliases } from './aliases.js';
 import { classifyIntent, mergeHybridResults } from './hybrid.js';
-import { embedProject, getDocument, indexProject, initProject, loadConfig, queryIndex, statusIndex, vqueryIndex } from './store.js';
+import { embedProject, getDocument, importProject, indexProject, initProject, loadConfig, preflightProject, queryIndex, statusIndex, vqueryIndex } from './store.js';
 
 function parseArgs(args) {
   const parsed = { _: [] };
@@ -17,7 +17,7 @@ function parseArgs(args) {
     }
     if (arg === '--local-only') continue; // legacy alias; local-only is default
     if (arg === '--allow-network') throw new Error('--allow-network is not supported in M0/M1');
-    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain') {
+    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths') {
       parsed[arg.slice(2)] = true;
       continue;
     }
@@ -76,6 +76,16 @@ export async function main(args) {
   if (command === 'index') {
     const result = indexProject();
     print({ schemaVersion: 1, indexed: result }, parsed.json);
+    return;
+  }
+  if (command === 'preflight') {
+    const target = parsed._[1];
+    print(preflightProject({ root: target, includePaths: Boolean(parsed['include-paths']) }), parsed.json);
+    return;
+  }
+  if (command === 'import') {
+    const target = parsed._[1];
+    print(importProject({ target, force: Boolean(parsed.force) }), parsed.json);
     return;
   }
   if (command === 'query') {
@@ -225,7 +235,7 @@ function print(value, json = false) {
 }
 
 function printHelp() {
-  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]
+  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]
   embed [--json]
   vquery <text> [--limit N] [--json]
   hquery <text> [--mode exact|broad|hybrid] [--limit N] [--json] [--explain]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]

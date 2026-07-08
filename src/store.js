@@ -1,8 +1,9 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { DEFAULT_CAPS, tokenize, titleFromMarkdown, walkMarkdown } from './bm25.js';
+import { isDeniedPath } from './denylist.js';
 import { cosine, embedText, resolveEmbeddingConfig } from './embeddings.js';
 
 export const ZBRAIN_DIR = '.zbrain';
@@ -22,7 +23,7 @@ export function initProject({ root, force = false, cwd = process.cwd() }) {
   return { configPath: CONFIG_PATH, root: relativeRoot };
 }
 
-function ensureGitignore(cwd) {
+export function ensureGitignore(cwd) {
   const gitignore = path.join(cwd, '.gitignore');
   const line = '.zbrain/';
   const current = existsSync(gitignore) ? readFileSync(gitignore, 'utf8') : '';
@@ -38,6 +39,138 @@ export function loadConfig(cwd = process.cwd()) {
   const root = path.resolve(cwd, config.root);
   assertInside(cwd, root, 'configured root escapes project directory');
   return { ...config, rootAbs: root };
+}
+
+export function preflightProject({ root, cwd = process.cwd(), includePaths = false, caps = DEFAULT_CAPS } = {}) {
+  if (!root) throw new Error('path is required');
+  const absRoot = resolveUserPath(root, cwd);
+  if (!existsSync(absRoot) || !statSync(absRoot).isDirectory()) throw new Error('path must be an existing directory');
+  const scan = scanMarkdownCorpus(absRoot, { includePaths, caps });
+  const warnings = [];
+  if (scan.documents > caps.maxDocuments) warnings.push({ code: 'max_documents_exceeded', message: `documents exceeds maxDocuments (${scan.documents} > ${caps.maxDocuments})` });
+  if (scan.totalBytes > caps.maxTotalBytes) warnings.push({ code: 'max_total_bytes_exceeded', message: `totalBytes exceeds maxTotalBytes (${scan.totalBytes} > ${caps.maxTotalBytes})` });
+  return {
+    schemaVersion: 1,
+    preflight: {
+      documents: scan.documents,
+      totalBytes: scan.totalBytes,
+      skippedFiles: scan.skippedFiles,
+      skippedReasons: scan.skippedReasons,
+      largestFiles: scan.largestFiles.map((file) => ({ path: includePaths ? file.path : null, sizeBytes: file.sizeBytes })),
+      skipped: includePaths ? scan.skipped : undefined,
+      caps,
+      fitsCaps: warnings.length === 0,
+      warnings,
+    },
+  };
+}
+
+export function importProject({ target, cwd = process.cwd(), force = false } = {}) {
+  if (!target) throw new Error('path is required');
+  const absTarget = resolveUserPath(target, cwd);
+  if (!existsSync(absTarget) || !statSync(absTarget).isDirectory()) throw new Error('path must be an existing directory');
+  const preflight = preflightProject({ root: absTarget, cwd, includePaths: false }).preflight;
+  if (!preflight.fitsCaps) throw new Error(`preflight failed caps: ${preflight.warnings.map((w) => w.code).join(', ')}`);
+
+  ensureGitignore(absTarget);
+  const configPath = path.join(absTarget, CONFIG_PATH);
+  const dbPath = path.join(absTarget, DB_PATH);
+  const configExists = existsSync(configPath);
+  const dbExists = existsSync(dbPath);
+  let configAction = 'created';
+  if (configExists) {
+    const existing = JSON.parse(readFileSync(configPath, 'utf8'));
+    if (existing.schemaVersion === 1 && existing.root === '.') configAction = 'reused';
+    else if (!force) throw new Error('config exists with incompatible root; pass --force to overwrite');
+    else configAction = 'overwritten';
+  }
+  if (dbExists && !force) throw new Error('index exists; pass --force to overwrite');
+
+  mkdirSync(path.join(absTarget, ZBRAIN_DIR), { recursive: true });
+  const backups = {};
+  if (configExists && configAction === 'overwritten') {
+    backups.configPath = backupLocalFile(configPath, absTarget);
+    initProject({ cwd: absTarget, root: '.', force: true });
+  } else if (!configExists) {
+    initProject({ cwd: absTarget, root: '.', force: false });
+  }
+
+  let dbAction = 'created';
+  if (dbExists) {
+    backups.dbPath = backupLocalFile(dbPath, absTarget);
+    dbAction = 'overwritten';
+  }
+
+  const indexed = indexProject({ cwd: absTarget });
+  const status = statusIndex({ cwd: absTarget }).status;
+  return {
+    schemaVersion: 1,
+    import: {
+      configPath: CONFIG_PATH,
+      dbPath: DB_PATH,
+      configAction,
+      dbAction,
+      backups,
+      indexed,
+      status: { documents: status.documents, chunks: status.chunks, dbSizeBytes: status.dbSizeBytes },
+    },
+  };
+}
+
+function resolveUserPath(value, cwd) {
+  const input = String(value);
+  if (input === '~') return process.env.HOME || cwd;
+  if (input.startsWith('~/')) return path.join(process.env.HOME || cwd, input.slice(2));
+  return path.resolve(cwd, input);
+}
+
+function backupLocalFile(file, root) {
+  const parsed = path.parse(file);
+  const backup = path.join(parsed.dir, `${parsed.base}.${Date.now()}.bak`);
+  copyFileSync(file, backup);
+  return path.relative(root, backup).replace(/\\/g, '/');
+}
+
+function scanMarkdownCorpus(root, { includePaths = false, caps = DEFAULT_CAPS } = {}) {
+  const skippedReasons = { deniedPath: 0, oversized: 0, symlink: 0, maxDepth: 0, unreadable: 0 };
+  const skipped = [];
+  const largest = [];
+  let documents = 0;
+  let totalBytes = 0;
+  function skip(reason, rel, sizeBytes = null) {
+    skippedReasons[reason] += 1;
+    if (includePaths) skipped.push({ reason, path: normalizeRel(rel), sizeBytes });
+  }
+  function walk(rel = '') {
+    const depth = rel ? rel.split(path.sep).length : 0;
+    if (depth > caps.maxDepth) { skip('maxDepth', rel); return; }
+    const dir = path.join(root, rel);
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); }
+    catch { skip('unreadable', rel); return; }
+    for (const entry of entries) {
+      const childRel = path.join(rel, entry.name);
+      if (isDeniedPath(childRel)) { skip('deniedPath', childRel); continue; }
+      if (entry.isSymbolicLink()) { skip('symlink', childRel); continue; }
+      const full = path.join(root, childRel);
+      if (entry.isDirectory()) { walk(childRel); continue; }
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue;
+      let stat;
+      try { stat = statSync(full); }
+      catch { skip('unreadable', childRel); continue; }
+      largest.push({ path: normalizeRel(childRel), sizeBytes: stat.size });
+      if (stat.size > caps.maxFileBytes) { skip('oversized', childRel, stat.size); continue; }
+      documents += 1;
+      totalBytes += stat.size;
+    }
+  }
+  walk();
+  largest.sort((a, b) => b.sizeBytes - a.sizeBytes || a.path.localeCompare(b.path));
+  return { documents, totalBytes, skippedFiles: Object.values(skippedReasons).reduce((a, b) => a + b, 0), skippedReasons, largestFiles: largest.slice(0, 5), skipped };
+}
+
+function normalizeRel(value) {
+  return String(value).replace(/\\/g, '/');
 }
 
 export function indexProject({ cwd = process.cwd() } = {}) {

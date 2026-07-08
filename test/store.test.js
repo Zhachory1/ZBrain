@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { getDocument, indexProject, initProject, queryIndex, statusIndex } from '../src/store.js';
+import { getDocument, importProject, indexProject, initProject, preflightProject, queryIndex, statusIndex } from '../src/store.js';
 
 const bin = path.resolve('bin/zbrain.js');
 
@@ -16,6 +16,76 @@ function fixture() {
   writeFileSync(path.join(dir, 'docs', 'other.md'), '# Other\n\nNo matching phrase.\n');
   return dir;
 }
+
+test('preflight reports corpus shape and redacts paths by default', () => {
+  const dir = fixture();
+  mkdirSync(path.join(dir, '.zbrain'), { recursive: true });
+  writeFileSync(path.join(dir, '.zbrain', 'hidden.md'), '# Hidden\nsecret\n');
+  const preflight = preflightProject({ root: dir });
+  assert.equal(preflight.preflight.documents, 3);
+  assert.equal(preflight.preflight.skippedReasons.deniedPath, 1);
+  assert.equal(preflight.preflight.largestFiles[0].path, null);
+  const withPaths = preflightProject({ root: dir, includePaths: true });
+  assert.match(withPaths.preflight.largestFiles[0].path, /docs\//);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('import indexes target without touching caller cwd', () => {
+  const dir = fixture();
+  const caller = mkdtempSync(path.join(tmpdir(), 'zbrain-caller-'));
+  const result = importProject({ cwd: caller, target: dir });
+  assert.equal(result.import.configAction, 'created');
+  assert.equal(result.import.dbAction, 'created');
+  assert.ok(existsSync(path.join(dir, '.zbrain/index.sqlite')));
+  assert.ok(!existsSync(path.join(caller, '.zbrain')));
+  assert.match(readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^\.zbrain\/$/m);
+  const query = queryIndex({ cwd: dir, query: 'alpha needle', limit: 5 });
+  assert.equal(query.results[0].id, 'docs/release.md');
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(caller, { recursive: true, force: true });
+});
+
+test('import reuses compatible config and preserves aliases', () => {
+  const dir = fixture();
+  mkdirSync(path.join(dir, '.zbrain'), { recursive: true });
+  const embeddings = { provider: 'ollama', baseUrl: 'http://127.0.0.1:11434', model: 'mxbai-embed-large:latest' };
+  writeFileSync(path.join(dir, '.zbrain/config.json'), JSON.stringify({ schemaVersion: 1, root: '.', aliases: { 'sign-in': ['login'] }, embeddings }, null, 2));
+  const result = importProject({ target: dir });
+  assert.equal(result.import.configAction, 'reused');
+  const config = JSON.parse(readFileSync(path.join(dir, '.zbrain/config.json'), 'utf8'));
+  assert.deepEqual(config.aliases, { 'sign-in': ['login'] });
+  assert.deepEqual(config.embeddings, embeddings);
+  assert.match(readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^\.zbrain\/$/m);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('import rejects incompatible config without force', () => {
+  const dir = fixture();
+  initProject({ cwd: dir, root: './docs' });
+  assert.throws(() => importProject({ target: dir }), /incompatible root/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('import rejects existing index without force and backs it up with force', () => {
+  const dir = fixture();
+  importProject({ target: dir });
+  assert.throws(() => importProject({ target: dir }), /index exists/);
+  const forced = importProject({ target: dir, force: true });
+  assert.equal(forced.import.dbAction, 'overwritten');
+  assert.ok(forced.import.backups.dbPath);
+  assert.ok(existsSync(path.join(dir, forced.import.backups.dbPath)));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('failed import on existing index does not create config but still enforces gitignore', () => {
+  const dir = fixture();
+  mkdirSync(path.join(dir, '.zbrain'), { recursive: true });
+  writeFileSync(path.join(dir, '.zbrain/index.sqlite'), 'existing');
+  assert.throws(() => importProject({ target: dir }), /index exists/);
+  assert.ok(!existsSync(path.join(dir, '.zbrain/config.json')));
+  assert.match(readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^\.zbrain\/$/m);
+  rmSync(dir, { recursive: true, force: true });
+});
 
 test('init, index, query, get, status work', () => {
   const dir = fixture();

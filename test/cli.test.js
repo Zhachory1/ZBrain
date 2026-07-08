@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -40,4 +40,28 @@ test('CLI accepts --help and -h', () => {
     assert.equal(result.status, 0);
     assert.match(result.stdout, /Commands:/);
   }
+});
+
+test('CLI preflight and import target path', () => {
+  const target = mkdtempSync(path.join(tmpdir(), 'zbrain-cli-import-'));
+  mkdirSync(path.join(target, 'docs'), { recursive: true });
+  writeFileSync(path.join(target, 'docs', 'note.md'), '# Note\n\nalpha needle\n');
+  const preflight = spawnSync(process.execPath, [bin, 'preflight', target, '--json'], { cwd: process.cwd(), encoding: 'utf8' });
+  assert.equal(preflight.status, 0, preflight.stderr);
+  const preflightJson = JSON.parse(preflight.stdout);
+  assert.equal(preflightJson.preflight.documents, 1);
+  assert.equal(preflightJson.preflight.largestFiles[0].path, null);
+  const preflightPaths = spawnSync(process.execPath, [bin, 'preflight', target, '--include-paths', '--json'], { cwd: process.cwd(), encoding: 'utf8' });
+  assert.equal(preflightPaths.status, 0, preflightPaths.stderr);
+  const pathValue = JSON.parse(preflightPaths.stdout).preflight.largestFiles[0].path;
+  assert.equal(pathValue, 'docs/note.md');
+  assert.ok(!path.isAbsolute(pathValue));
+  const imported = spawnSync(process.execPath, [bin, 'import', target, '--json'], { cwd: process.cwd(), encoding: 'utf8' });
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.equal(JSON.parse(imported.stdout).import.indexed.documents, 1);
+  assert.match(readFileSync(path.join(target, '.gitignore'), 'utf8'), /^\.zbrain\/$/m);
+  const query = spawnSync(process.execPath, [bin, 'query', 'alpha needle', '--json'], { cwd: target, encoding: 'utf8' });
+  assert.equal(query.status, 0, query.stderr);
+  assert.equal(JSON.parse(query.stdout).results[0].id, 'docs/note.md');
+  rmSync(target, { recursive: true, force: true });
 });

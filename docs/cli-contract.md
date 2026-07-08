@@ -30,6 +30,87 @@ Success:
 { "configPath": ".zbrain/config.json", "root": "docs" }
 ```
 
+## preflight
+
+```bash
+zbrain preflight <path> [--include-paths] [--json]
+```
+
+Scans Markdown corpus shape without building an index.
+
+Default JSON avoids file paths:
+
+```json
+{
+  "schemaVersion": 1,
+  "preflight": {
+    "documents": 3,
+    "totalBytes": 1234,
+    "skippedFiles": 1,
+    "skippedReasons": {
+      "deniedPath": 1,
+      "oversized": 0,
+      "symlink": 0,
+      "maxDepth": 0,
+      "unreadable": 0
+    },
+    "largestFiles": [
+      { "path": null, "sizeBytes": 999 }
+    ],
+    "caps": {
+      "maxFileBytes": 1048576,
+      "maxDocuments": 20000,
+      "maxTotalBytes": 104857600,
+      "maxDepth": 25,
+      "maxQueryMs": 5000
+    },
+    "fitsCaps": true,
+    "warnings": []
+  }
+}
+```
+
+`--include-paths` adds relative paths for largest/skipped local files. Do not commit private preflight output when paths are included.
+
+## import
+
+```bash
+zbrain import <path> [--force] [--json]
+```
+
+Creates or reuses a target-local ZBrain config, ensures target `.gitignore` contains `.zbrain/`, and builds `<path>/.zbrain/index.sqlite`.
+
+Success:
+
+```json
+{
+  "schemaVersion": 1,
+  "import": {
+    "configPath": ".zbrain/config.json",
+    "dbPath": ".zbrain/index.sqlite",
+    "configAction": "created",
+    "dbAction": "created",
+    "backups": {},
+    "indexed": { "dbPath": ".zbrain/index.sqlite", "documents": 3 },
+    "status": { "documents": 3, "chunks": 3, "dbSizeBytes": 4096 }
+  }
+}
+```
+
+Action enums:
+
+- `configAction`: `created`, `reused`, `overwritten`
+- `dbAction`: `created`, `overwritten`
+
+Safety behavior:
+
+- compatible existing config with root `.` is reused
+- incompatible existing config fails unless `--force`
+- existing `.zbrain/index.sqlite` fails unless `--force`
+- `--force` backs up overwritten config/DB and reports relative backup paths
+
+`.zbrain/index.sqlite` stores raw Markdown bodies/chunks locally. It is gitignored and should be treated as sensitive local data.
+
 ## index
 
 ```bash
