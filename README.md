@@ -96,6 +96,14 @@ zbrain hquery "vector retrieval" --path-prefix projects/zbrain --json
 
 Filters are local SQL only. They are not added to embedding prompts. Metadata is path-derived: `projects/<slug>/<type>/...` sets project/type, top-level folders set type, and the first `YYYY-MM-DD` in the relative path sets date.
 
+Get an extractive cited evidence digest:
+
+```bash
+zbrain answer "what did we decide about vector-heavy hybrid?" --project zbrain --json
+```
+
+`answer` defaults to exact/BM25 mode and quotes indexed source lines with citations. It reports `evidence_found`, `weak_evidence`, or `insufficient_evidence`; it does not generate abstractive answers.
+
 ## Local-only behavior
 
 M1 rejects `--allow-network`. `npm run bench:synthetic` runs through `scripts/local-only-runner.js`:

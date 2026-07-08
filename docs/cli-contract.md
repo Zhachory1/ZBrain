@@ -189,6 +189,41 @@ Query grammar:
 - empty query is invalid
 - rank is authoritative; score is higher-is-better normalized relevance
 
+## answer
+
+```bash
+zbrain answer <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--cite] [--json]
+```
+
+Returns an extractive cited evidence digest from indexed document text.
+
+Defaults:
+
+- mode: `exact`
+- limit: `5`, max `20`
+- citations always included; `--cite` is accepted for clarity
+
+Statuses:
+
+- `evidence_found`: exact quoted evidence lines were found
+- `weak_evidence`: retrieval returned results, but no quotable support lines passed evidence checks
+- `insufficient_evidence`: retrieval returned no results
+
+`answer` is not abstractive synthesis and does not claim semantic answer completeness.
+
+JSON shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "query": { "text": "...", "mode": "exact", "retrievalMode": "bm25", "limit": 5, "filters": {}, "network": "none" },
+  "answer": { "status": "evidence_found", "text": "- \"quoted source line\" [1]", "citations": [{ "id": 1, "path": "doc.md", "lineStart": 2, "lineEnd": 2, "title": "Doc", "hash": "abc123" }] },
+  "evidence": [{ "citationId": 1, "quote": "quoted source line", "path": "doc.md", "lineStart": 2, "lineEnd": 2 }]
+}
+```
+
+Citation source is the indexed SQLite document body, not a live filesystem read. Broad/hybrid modes use loopback embedding retrieval and report `network: "loopback"`.
+
 ## get
 
 ```bash

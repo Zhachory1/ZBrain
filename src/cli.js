@@ -3,7 +3,8 @@ import { assertNoNetworkAvailable, failIfUnsupportedLocalOnly, runInMacSandbox, 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expandAliases, validateAliases } from './aliases.js';
-import { classifyIntent, mergeHybridResults } from './hybrid.js';
+import { answerQuery, formatAnswerText } from './answer.js';
+import { retrieve } from './retrieval.js';
 import { embedProject, getDocument, importProject, indexProject, initProject, loadConfig, preflightProject, queryIndex, statusIndex, vqueryIndex } from './store.js';
 
 function parseArgs(args) {
@@ -17,7 +18,7 @@ function parseArgs(args) {
     }
     if (arg === '--local-only') continue; // legacy alias; local-only is default
     if (arg === '--allow-network') throw new Error('--allow-network is not supported in M0/M1');
-    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths' || arg === '--stale') {
+    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths' || arg === '--stale' || arg === '--cite') {
       parsed[arg.slice(2)] = true;
       continue;
     }
@@ -38,7 +39,8 @@ function parseArgs(args) {
 export async function main(args) {
   if (args.includes('--allow-network')) throw new Error('--allow-network is not supported');
   const earlyCommand = args.find((arg) => !arg.startsWith('--'));
-  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery';
+  const answerMode = args[args.indexOf('--mode') + 1];
+  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery' || (earlyCommand === 'answer' && ['broad', 'vector', 'hybrid'].includes(answerMode));
   if (!loopbackCommand) {
     if (shouldWrapLocalOnly(args)) runInMacSandbox(args);
     failIfUnsupportedLocalOnly();
@@ -151,45 +153,20 @@ export async function main(args) {
 
   if (command === 'hquery') {
     assertAllowedOptions(parsed, ['json', 'limit', 'mode', 'explain', 'no-aliases', ...FILTER_FLAGS]);
-    const filters = filtersFromParsed(parsed);
-    const query = parsed._.slice(1).join(' ');
-    const mode = parsed.mode || classifyIntent(query);
-    let queryForSearch = query;
-    let aliasInfo = { aliasesApplied: [] };
-    if (!parsed['no-aliases']) {
-      const configPath = path.join(process.cwd(), '.zbrain/config.json');
-      if (existsSync(configPath)) {
-        const config = loadConfig();
-        aliasInfo = expandAliases(query, config.aliases);
-        queryForSearch = aliasInfo.expandedQuery;
-      }
-    }
-    if (mode === 'exact' || mode === 'bm25') {
-      const result = queryIndex({ query: queryForSearch, limit: parsed.limit, filters });
-      result.query = { ...(result.query || {}), retrievalMode: 'bm25', intent: mode, aliasesApplied: parsed.explain ? aliasInfo.aliasesApplied : undefined, filters: parsed.explain && Object.keys(filters).length ? filters : undefined };
-      if (!parsed.explain) delete result.query.aliasesApplied;
-      print(result, parsed.json);
-      return;
-    }
-    if (mode === 'broad' || mode === 'vector') {
-      const result = await vqueryIndex({ query, limit: parsed.limit, filters });
-      result.query.intent = mode;
-      if (!parsed.explain) delete result.query.filters;
-      print(result, parsed.json);
-      return;
-    }
-    if (mode === 'hybrid') {
-      const bm25 = queryIndex({ query: queryForSearch, limit: parsed.limit || 10, filters }).results;
-      const vector = (await vqueryIndex({ query, limit: parsed.limit || 10, filters })).results;
-      const results = mergeHybridResults({ bm25, vector, limit: Math.max(1, Math.min(Number(parsed.limit) || 10, 100)) });
-      const output = { schemaVersion: 1, query: { retrievalMode: 'hybrid', intent: mode, sources: ['bm25', 'vector'], aliasesApplied: parsed.explain ? aliasInfo.aliasesApplied : undefined, filters: parsed.explain && Object.keys(filters).length ? filters : undefined }, results };
-      if (!parsed.explain) delete output.query.aliasesApplied;
-      print(output, parsed.json);
-      return;
-    }
-    throw new Error(`unknown hquery mode: ${mode}`);
+    const result = await retrieve({ query: parsed._.slice(1).join(' '), mode: parsed.mode || 'auto', limit: parsed.limit, filters: filtersFromParsed(parsed), noAliases: Boolean(parsed['no-aliases']), explain: Boolean(parsed.explain) });
+    print(result, parsed.json);
+    return;
   }
 
+  if (command === 'answer') {
+    assertAllowedOptions(parsed, ['json', 'limit', 'mode', 'cite', 'no-aliases', ...FILTER_FLAGS]);
+    const mode = parsed.mode || 'exact';
+    if (!['exact', 'broad', 'hybrid'].includes(mode)) throw new Error(`invalid answer mode: ${mode}`);
+    const result = await answerQuery({ query: parsed._.slice(1).join(' '), mode, limit: parsed.limit, filters: filtersFromParsed(parsed), noAliases: Boolean(parsed['no-aliases']) });
+    if (parsed.json) print(result, true);
+    else process.stdout.write(formatAnswerText(result));
+    return;
+  }
 
   throw new Error(`unknown command: ${command}`);
 }
@@ -265,6 +242,7 @@ function printHelp() {
   console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--no-aliases] [--explain]
   embed [--stale] [--json]
   vquery <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
-  hquery <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--explain]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]
+  hquery <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--explain]
+  answer <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--cite] [--json]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]
   bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n\nFilters are path-derived: project=projects/<slug>, type=folder/type segment, date=first YYYY-MM-DD in relative path.\n`);
 }
