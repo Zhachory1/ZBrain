@@ -89,6 +89,8 @@ export async function main(args) {
     return;
   }
   if (command === 'query') {
+    assertAllowedOptions(parsed, ['json', 'limit', 'no-aliases', 'explain', ...FILTER_FLAGS]);
+    const filters = filtersFromParsed(parsed);
     const query = parsed._.slice(1).join(' ');
     let queryForSearch = query;
     let aliasInfo = { aliasesApplied: [] };
@@ -100,9 +102,9 @@ export async function main(args) {
         queryForSearch = aliasInfo.expandedQuery;
       }
     }
-    const result = queryIndex({ query: queryForSearch, limit: parsed.limit });
+    const result = queryIndex({ query: queryForSearch, limit: parsed.limit, filters });
     if (parsed.explain && parsed.json) {
-      result.query = { aliasesApplied: aliasInfo.aliasesApplied };
+      result.query = { ...(result.query || {}), aliasesApplied: aliasInfo.aliasesApplied, filters: Object.keys(filters).length ? filters : undefined };
     }
     print(result, parsed.json);
     return;
@@ -140,12 +142,16 @@ export async function main(args) {
     return;
   }
   if (command === 'vquery') {
+    assertAllowedOptions(parsed, ['json', 'limit', ...FILTER_FLAGS]);
+    const filters = filtersFromParsed(parsed);
     const query = parsed._.slice(1).join(' ');
-    print(await vqueryIndex({ query, limit: parsed.limit }), parsed.json);
+    print(await vqueryIndex({ query, limit: parsed.limit, filters }), parsed.json);
     return;
   }
 
   if (command === 'hquery') {
+    assertAllowedOptions(parsed, ['json', 'limit', 'mode', 'explain', 'no-aliases', ...FILTER_FLAGS]);
+    const filters = filtersFromParsed(parsed);
     const query = parsed._.slice(1).join(' ');
     const mode = parsed.mode || classifyIntent(query);
     let queryForSearch = query;
@@ -159,23 +165,24 @@ export async function main(args) {
       }
     }
     if (mode === 'exact' || mode === 'bm25') {
-      const result = queryIndex({ query: queryForSearch, limit: parsed.limit });
-      result.query = { retrievalMode: 'bm25', intent: mode, aliasesApplied: parsed.explain ? aliasInfo.aliasesApplied : undefined };
+      const result = queryIndex({ query: queryForSearch, limit: parsed.limit, filters });
+      result.query = { ...(result.query || {}), retrievalMode: 'bm25', intent: mode, aliasesApplied: parsed.explain ? aliasInfo.aliasesApplied : undefined, filters: parsed.explain && Object.keys(filters).length ? filters : undefined };
       if (!parsed.explain) delete result.query.aliasesApplied;
       print(result, parsed.json);
       return;
     }
     if (mode === 'broad' || mode === 'vector') {
-      const result = await vqueryIndex({ query, limit: parsed.limit });
+      const result = await vqueryIndex({ query, limit: parsed.limit, filters });
       result.query.intent = mode;
+      if (!parsed.explain) delete result.query.filters;
       print(result, parsed.json);
       return;
     }
     if (mode === 'hybrid') {
-      const bm25 = queryIndex({ query: queryForSearch, limit: parsed.limit || 10 }).results;
-      const vector = (await vqueryIndex({ query, limit: parsed.limit || 10 })).results;
+      const bm25 = queryIndex({ query: queryForSearch, limit: parsed.limit || 10, filters }).results;
+      const vector = (await vqueryIndex({ query, limit: parsed.limit || 10, filters })).results;
       const results = mergeHybridResults({ bm25, vector, limit: Math.max(1, Math.min(Number(parsed.limit) || 10, 100)) });
-      const output = { schemaVersion: 1, query: { retrievalMode: 'hybrid', intent: mode, sources: ['bm25', 'vector'], aliasesApplied: parsed.explain ? aliasInfo.aliasesApplied : undefined }, results };
+      const output = { schemaVersion: 1, query: { retrievalMode: 'hybrid', intent: mode, sources: ['bm25', 'vector'], aliasesApplied: parsed.explain ? aliasInfo.aliasesApplied : undefined, filters: parsed.explain && Object.keys(filters).length ? filters : undefined }, results };
       if (!parsed.explain) delete output.query.aliasesApplied;
       print(output, parsed.json);
       return;
@@ -207,6 +214,8 @@ function buildAliasProposal(manifest, rows, manifestPath) {
   return { schemaVersion: 1, aliases, evidence, warning: 'manual_review_required' };
 }
 
+const FILTER_FLAGS = ['path-prefix', 'project', 'type', 'from-date', 'to-date'];
+
 const STOPWORDS = new Set(['the','a','an','to','for','of','and','or','in','on','where','what','which','did','we','with','when','how','why','is','are','was']);
 function aliasKey(query) {
   const terms = query.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._-]*/gu) || [];
@@ -229,15 +238,33 @@ function aliasValues(root, expected) {
   return values;
 }
 
+function assertAllowedOptions(parsed, allowed) {
+  const allowedSet = new Set(allowed);
+  for (const key of Object.keys(parsed)) {
+    if (key === '_' || allowedSet.has(key)) continue;
+    throw new Error(`unknown option: --${key}`);
+  }
+}
+
+function filtersFromParsed(parsed) {
+  return {
+    pathPrefix: parsed['path-prefix'],
+    project: parsed.project,
+    type: parsed.type,
+    fromDate: parsed['from-date'],
+    toDate: parsed['to-date'],
+  };
+}
+
 function print(value, json = false) {
   if (json) console.log(JSON.stringify(value, null, 2));
   else console.log(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
 }
 
 function printHelp() {
-  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]
+  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--no-aliases] [--explain]
   embed [--stale] [--json]
-  vquery <text> [--limit N] [--json]
-  hquery <text> [--mode exact|broad|hybrid] [--limit N] [--json] [--explain]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]
-  bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
+  vquery <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
+  hquery <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--explain]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]
+  bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n\nFilters are path-derived: project=projects/<slug>, type=folder/type segment, date=first YYYY-MM-DD in relative path.\n`);
 }

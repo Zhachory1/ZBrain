@@ -119,10 +119,40 @@ zbrain index [--json]
 
 Builds `.zbrain/index.sqlite` from Markdown. First run creates the DB. Later runs update existing DBs incrementally by document hash and report `changed`, `unchanged`, and `deleted` counts while preserving unchanged embeddings.
 
+## Retrieval filters
+
+`query`, `vquery`, and `hquery` accept optional local metadata filters:
+
+```bash
+--path-prefix projects/zbrain
+--project zbrain
+--type reports
+--from-date 2026-07-01
+--to-date 2026-07-31
+```
+
+Metadata derivation:
+
+- `projects/<slug>/<type>/file.md` gives `project=<slug>` and `type=<type>`
+- top-level folders give `type`, e.g. `people`, `companies`, `meetings`, `inbox`
+- date is the first `YYYY-MM-DD` in the relative path
+- frontmatter metadata is not parsed yet
+
+Semantics:
+
+- filters combine with AND
+- path-prefix is POSIX relative, rejects absolute paths and `..`
+- path-prefix matches exact path or segment boundary only
+- project/type are exact slug matches
+- dates are inclusive `YYYY-MM-DD`
+- invalid dates and `from-date > to-date` are errors
+- unknown retrieval flags are errors
+- filters stay local SQL only; they are not added to embedding prompts
+
 ## query
 
 ```bash
-zbrain query <text> [--limit N] [--json] [--no-aliases] [--explain]
+zbrain query <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--no-aliases] [--explain]
 ```
 
 Result:
@@ -256,7 +286,7 @@ Success:
 ## vquery
 
 ```bash
-zbrain vquery <text> [--limit N] [--json]
+zbrain vquery <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
 ```
 
 Returns vector/cosine ranked results with the same result shape as `query` plus:
@@ -302,7 +332,7 @@ Proposal shape:
 ## hquery
 
 ```bash
-zbrain hquery <text> [--mode exact|broad|hybrid] [--limit N] [--json] [--explain]
+zbrain hquery <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--explain]
 ```
 
 Intent-aware retrieval:

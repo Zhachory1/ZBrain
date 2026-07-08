@@ -19,6 +19,6 @@ function classify(message) {
   if (/not found/i.test(message)) return 'not_found';
   if (/config/i.test(message)) return 'config_missing';
   if (/sqlite/i.test(message)) return 'sqlite_unavailable';
-  if (/required|invalid|query|root|chunk id/i.test(message)) return 'invalid_request';
+  if (/required|invalid|query|root|chunk id|unknown option|path-prefix|from-date|to-date|valid YYYY-MM-DD|relative path/i.test(message)) return 'invalid_request';
   return 'internal_error';
 }

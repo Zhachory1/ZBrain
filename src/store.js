@@ -212,6 +212,7 @@ function readDocuments(root, cwd) {
       title: titleFromMarkdown(body, rel),
       body,
       hash: createHash('sha256').update(body).digest('hex').slice(0, 16),
+      metadata: metadataFromPath(rel),
       mtimeMs: Math.floor(stat.mtimeMs),
       sizeBytes: stat.size,
       chunks: chunkBody(body),
@@ -235,8 +236,10 @@ function updateIndexDb(db, docs) {
   runSql(db, 'PRAGMA wal_checkpoint(FULL);');
   copyFileSync(db, tmp);
   ensureEmbeddingInputHashColumn(tmp);
-  const existing = runSqlJson(tmp, 'SELECT id, hash FROM documents;');
-  const existingById = new Map(existing.map((row) => [row.id, row.hash]));
+  ensureDocumentMetadataColumns(tmp);
+  backfillDocumentMetadata(tmp);
+  const existing = runSqlJson(tmp, 'SELECT id, hash, project, doc_type, doc_date FROM documents;');
+  const existingById = new Map(existing.map((row) => [row.id, row]));
   const incomingIds = new Set(docs.map((doc) => doc.id));
   let changed = 0;
   let unchanged = 0;
@@ -251,7 +254,8 @@ function updateIndexDb(db, docs) {
     }
   }
   for (const doc of docs) {
-    if (existingById.get(doc.id) === doc.hash) {
+    const existingDoc = existingById.get(doc.id);
+    if (existingDoc?.hash === doc.hash && metadataMatches(existingDoc, doc.metadata)) {
       unchanged += 1;
       continue;
     }
@@ -290,6 +294,9 @@ CREATE TABLE documents(
   path TEXT NOT NULL UNIQUE,
   title TEXT NOT NULL,
   hash TEXT NOT NULL,
+  project TEXT,
+  doc_type TEXT,
+  doc_date TEXT,
   mtime_ms INTEGER NOT NULL,
   size_bytes INTEGER NOT NULL,
   body TEXT NOT NULL,
@@ -323,7 +330,7 @@ CREATE TABLE IF NOT EXISTS chunk_embeddings (
 }
 
 function documentInsertSql(doc) {
-  return `INSERT OR REPLACE INTO documents(id,path,title,hash,mtime_ms,size_bytes,body,updated_at) VALUES (${q(doc.id)},${q(doc.path)},${q(doc.title)},${q(doc.hash)},${doc.mtimeMs},${doc.sizeBytes},${q(doc.body)},${q(new Date().toISOString())});`;
+  return `INSERT OR REPLACE INTO documents(id,path,title,hash,project,doc_type,doc_date,mtime_ms,size_bytes,body,updated_at) VALUES (${q(doc.id)},${q(doc.path)},${q(doc.title)},${q(doc.hash)},${q(doc.metadata.project)},${q(doc.metadata.type)},${q(doc.metadata.date)},${doc.mtimeMs},${doc.sizeBytes},${q(doc.body)},${q(new Date().toISOString())});`;
 }
 
 function chunkInsertSql(doc, i) {
@@ -347,20 +354,107 @@ function validateIndexInvariants(db, docs) {
   if (Number(row.embedding_orphans) !== 0) throw new Error('embedding orphan rows after index');
 }
 
+function ensureDocumentMetadataColumns(db) {
+  const cols = runSqlJson(db, 'PRAGMA table_info(documents);').map((row) => row.name);
+  if (!cols.includes('project')) runSql(db, 'ALTER TABLE documents ADD COLUMN project TEXT;');
+  if (!cols.includes('doc_type')) runSql(db, 'ALTER TABLE documents ADD COLUMN doc_type TEXT;');
+  if (!cols.includes('doc_date')) runSql(db, 'ALTER TABLE documents ADD COLUMN doc_date TEXT;');
+}
+
+function backfillDocumentMetadata(db) {
+  const rows = runSqlJson(db, 'SELECT id,path,project,doc_type,doc_date FROM documents;');
+  const statements = [];
+  for (const row of rows) {
+    const metadata = metadataFromPath(row.path);
+    if (!metadataMatches(row, metadata)) statements.push(`UPDATE documents SET project=${q(metadata.project)}, doc_type=${q(metadata.type)}, doc_date=${q(metadata.date)} WHERE id=${q(row.id)};`);
+  }
+  if (statements.length) runSql(db, statements.join('\n'));
+}
+
+function metadataFromPath(relPath) {
+  const normalized = normalizeRel(relPath);
+  const parts = normalized.split('/').filter(Boolean);
+  let project = null;
+  let type = parts[0] || null;
+  if (parts[0] === 'projects' && parts[1]) {
+    project = parts[1];
+    type = parts[2] || 'overview';
+  }
+  const date = (normalized.match(/\b\d{4}-\d{2}-\d{2}\b/) || [null])[0];
+  return { project, type, date };
+}
+
+function metadataMatches(row, metadata) {
+  return (row.project ?? null) === (metadata.project ?? null)
+    && (row.doc_type ?? null) === (metadata.type ?? null)
+    && (row.doc_date ?? null) === (metadata.date ?? null);
+}
+
+function normalizeFilters(filters = {}) {
+  const normalized = {};
+  if (filters.pathPrefix) {
+    const prefix = normalizeRel(filters.pathPrefix).replace(/^\.\//, '').replace(/\/$/, '');
+    if (!prefix || path.isAbsolute(prefix) || prefix.split('/').includes('..')) throw new Error('path-prefix must be a relative path');
+    normalized.pathPrefix = prefix;
+  }
+  if (filters.project) normalized.project = String(filters.project);
+  if (filters.type) normalized.type = String(filters.type);
+  if (filters.fromDate) normalized.fromDate = normalizeDate(filters.fromDate, 'from-date');
+  if (filters.toDate) normalized.toDate = normalizeDate(filters.toDate, 'to-date');
+  if (normalized.fromDate && normalized.toDate && normalized.fromDate > normalized.toDate) throw new Error('from-date must be <= to-date');
+  return normalized;
+}
+
+function normalizeDate(value, label) {
+  const text = String(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) throw new Error(`${label} must be valid YYYY-MM-DD`);
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (date.toISOString().slice(0, 10) !== text) throw new Error(`${label} must be valid YYYY-MM-DD`);
+  return text;
+}
+
+function hasFilters(filters) {
+  return Object.keys(filters).length > 0;
+}
+
+function documentFilterWhereSql(filters, alias = null) {
+  const col = (name) => (alias ? `${alias}.${name}` : name);
+  const clauses = [];
+  if (filters.pathPrefix) clauses.push(`(${col('path')} = ${q(filters.pathPrefix)} OR substr(${col('path')}, 1, ${filters.pathPrefix.length + 1}) = ${q(`${filters.pathPrefix}/`)})`);
+  if (filters.project) clauses.push(`${col('project')} = ${q(filters.project)}`);
+  if (filters.type) clauses.push(`${col('doc_type')} = ${q(filters.type)}`);
+  if (filters.fromDate) clauses.push(`${col('doc_date')} >= ${q(filters.fromDate)}`);
+  if (filters.toDate) clauses.push(`${col('doc_date')} <= ${q(filters.toDate)}`);
+  return clauses.join(' AND ');
+}
+
+function documentFilterSubquerySql(filters, documentColumn) {
+  if (!hasFilters(filters)) return '';
+  const where = documentFilterWhereSql(filters);
+  return ` AND ${documentColumn} IN (SELECT id FROM documents WHERE ${where})`;
+}
+
 function ensureEmbeddingInputHashColumn(db) {
   const cols = runSqlJson(db, 'PRAGMA table_info(chunk_embeddings);').map((row) => row.name);
   if (!cols.includes('input_hash')) runSql(db, 'ALTER TABLE chunk_embeddings ADD COLUMN input_hash TEXT;');
 }
 
-export function queryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) }) {
+export function queryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH), filters = {} }) {
   if (!query) throw new Error('query is required');
   const terms = [...new Set(tokenize(query))].slice(0, 64);
   if (terms.length === 0) throw new Error('query has no searchable terms');
+  const normalizedFilters = normalizeFilters(filters);
+  if (hasFilters(normalizedFilters)) {
+    ensureDocumentMetadataColumns(dbPath);
+    backfillDocumentMetadata(dbPath);
+  }
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
   const match = terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' OR ');
-  const sql = `SELECT document_id, chunk_id, path, hash, line_start, line_end, title, text, bm25(chunks_fts) AS raw_score FROM chunks_fts WHERE chunks_fts MATCH ${q(match)} ORDER BY raw_score ASC, path ASC, line_start ASC LIMIT ${safeLimit};`;
+  const filterSql = documentFilterSubquerySql(normalizedFilters, 'document_id');
+  const sql = `SELECT document_id, chunk_id, path, hash, line_start, line_end, title, text, bm25(chunks_fts) AS raw_score FROM chunks_fts WHERE chunks_fts MATCH ${q(match)}${filterSql} ORDER BY raw_score ASC, path ASC, line_start ASC LIMIT ${safeLimit};`;
   const rows = runSqlJson(dbPath, sql);
-  return {
+  const output = {
     schemaVersion: 1,
     results: rows.map((row, i) => ({
       id: row.document_id,
@@ -372,6 +466,8 @@ export function queryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = pa
       snippet: row.text,
     })),
   };
+  if (hasFilters(normalizedFilters)) output.query = { filters: normalizedFilters };
+  return output;
 }
 
 export function getDocument({ id, from = 1, lines = null, cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) }) {
@@ -449,27 +545,36 @@ function embeddingInputHash(prompt) {
   return createHash('sha256').update(`${EMBEDDING_INPUT_VERSION}\n${String(prompt).slice(0, 500)}`).digest('hex').slice(0, 16);
 }
 
-export async function vqueryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) }) {
+export async function vqueryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH), filters = {} }) {
   if (!query) throw new Error('query is required');
   const config = loadConfig(cwd);
   const embeddingConfig = resolveEmbeddingConfig(config);
-  const { embedding, model } = await embedText(query, embeddingConfig);
-  const rows = runSqlJson(dbPath, `SELECT chunk_id, document_id, path, line_start, line_end, title, text, model, dims, embedding_json FROM chunk_embeddings WHERE model = ${q(model)};`);
-  if (rows.length === 0) throw new Error('no embeddings found. Run: zbrain embed');
+  const normalizedFilters = normalizeFilters(filters);
+  if (hasFilters(normalizedFilters)) {
+    ensureDocumentMetadataColumns(dbPath);
+    backfillDocumentMetadata(dbPath);
+  }
+  const model = embeddingConfig.model;
+  const globalRows = runSqlJson(dbPath, `SELECT COUNT(*) AS count FROM chunk_embeddings WHERE model = ${q(model)};`);
+  if (Number(globalRows[0]?.count || 0) === 0) throw new Error('no embeddings found. Run: zbrain embed');
+  const where = documentFilterWhereSql(normalizedFilters, 'd');
+  const rows = runSqlJson(dbPath, `SELECT e.chunk_id, e.document_id, e.path, d.hash, e.line_start, e.line_end, e.title, e.text, e.model, e.dims, e.embedding_json FROM chunk_embeddings e JOIN documents d ON d.id = e.document_id WHERE e.model = ${q(model)}${where ? ` AND ${where}` : ''};`);
+  if (rows.length === 0) return { schemaVersion: 1, query: { retrievalMode: 'vector', scoreKind: 'cosine', embeddingModel: model, filters: hasFilters(normalizedFilters) ? normalizedFilters : undefined }, results: [] };
+  const { embedding } = await embedText(query, embeddingConfig);
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
   const scored = rows.map((row) => ({ row, score: cosine(embedding, JSON.parse(row.embedding_json)) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, safeLimit);
   return {
     schemaVersion: 1,
-    query: { retrievalMode: 'vector', scoreKind: 'cosine', embeddingModel: model, dims: embedding.length },
+    query: { retrievalMode: 'vector', scoreKind: 'cosine', embeddingModel: model, dims: embedding.length, filters: hasFilters(normalizedFilters) ? normalizedFilters : undefined },
     results: scored.map((hit, i) => ({
       id: hit.row.document_id,
       chunkId: hit.row.chunk_id,
       title: hit.row.title,
       rank: i + 1,
       score: hit.score,
-      provenance: { path: hit.row.path, lineStart: Number(hit.row.line_start), lineEnd: Number(hit.row.line_end) },
+      provenance: { path: hit.row.path, lineStart: Number(hit.row.line_start), lineEnd: Number(hit.row.line_end), hash: hit.row.hash },
       snippet: hit.row.text,
     })),
   };
@@ -505,6 +610,7 @@ function runSqlJson(db, sql) {
 }
 
 function q(value) {
+  if (value === null || value === undefined) return 'NULL';
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 

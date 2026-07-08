@@ -42,6 +42,22 @@ test('CLI accepts --help and -h', () => {
   }
 });
 
+test('CLI query rejects unknown options', () => {
+  const result = spawnSync(process.execPath, [bin, 'query', 'alpha', '--prject', 'zbrain', '--json'], { cwd: process.cwd(), encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.error.code, 'invalid_request');
+  assert.match(parsed.error.message, /unknown option: --prject/);
+});
+
+test('CLI query reports invalid filter values as invalid_request', () => {
+  const result = spawnSync(process.execPath, [bin, 'query', 'alpha', '--from-date', '2026-99-99', '--json'], { cwd: process.cwd(), encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.error.code, 'invalid_request');
+  assert.match(parsed.error.message, /valid YYYY-MM-DD/);
+});
+
 test('CLI preflight and import target path', () => {
   const target = mkdtempSync(path.join(tmpdir(), 'zbrain-cli-import-'));
   mkdirSync(path.join(target, 'docs'), { recursive: true });

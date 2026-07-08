@@ -206,6 +206,40 @@ test('incremental reindex removes deleted docs', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('query filters project type date and path prefix', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'zbrain-meta-'));
+  mkdirSync(path.join(dir, 'projects/zbrain/reports'), { recursive: true });
+  mkdirSync(path.join(dir, 'projects/zbrainstorm/reports'), { recursive: true });
+  mkdirSync(path.join(dir, 'projects/other/plans'), { recursive: true });
+  writeFileSync(path.join(dir, 'projects/zbrain/reports/2026-07-07-alpha.md'), '# ZBrain Report\n\nsharedterm alpha\n');
+  writeFileSync(path.join(dir, 'projects/zbrainstorm/reports/2026-07-07-alpha.md'), '# ZBrainstorm Report\n\nsharedterm alpha\n');
+  writeFileSync(path.join(dir, 'projects/other/plans/2026-06-01-alpha.md'), '# Other Plan\n\nsharedterm alpha\n');
+  initProject({ cwd: dir, root: '.' });
+  indexProject({ cwd: dir });
+  assert.equal(queryIndex({ cwd: dir, query: 'sharedterm', filters: { project: 'zbrain' } }).results.length, 1);
+  assert.equal(queryIndex({ cwd: dir, query: 'sharedterm', filters: { pathPrefix: 'projects/zbrain' } }).results.length, 1);
+  assert.equal(queryIndex({ cwd: dir, query: 'sharedterm', filters: { pathPrefix: 'projects/ZBRAIN' } }).results.length, 0);
+  assert.equal(queryIndex({ cwd: dir, query: 'sharedterm', filters: { type: 'reports' } }).results.length, 2);
+  assert.equal(queryIndex({ cwd: dir, query: 'sharedterm', filters: { fromDate: '2026-07-01', toDate: '2026-07-31' } }).results.length, 2);
+  assert.throws(() => queryIndex({ cwd: dir, query: 'sharedterm', filters: { fromDate: '2026-99-99' } }), /valid YYYY-MM-DD/);
+  assert.throws(() => queryIndex({ cwd: dir, query: 'sharedterm', filters: { fromDate: '2026-08-01', toDate: '2026-07-01' } }), /from-date/);
+  assert.throws(() => queryIndex({ cwd: dir, query: 'sharedterm', filters: { pathPrefix: '../projects' } }), /path-prefix/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('query filters backfill metadata for existing indexes', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'zbrain-meta-backfill-'));
+  mkdirSync(path.join(dir, 'projects/zbrain/reports'), { recursive: true });
+  writeFileSync(path.join(dir, 'projects/zbrain/reports/2026-07-07-alpha.md'), '# ZBrain Report\n\nbackfillterm\n');
+  initProject({ cwd: dir, root: '.' });
+  indexProject({ cwd: dir });
+  const db = path.join(dir, '.zbrain/index.sqlite');
+  spawnSync('sqlite3', [db], { input: 'UPDATE documents SET project = NULL, doc_type = NULL, doc_date = NULL;', encoding: 'utf8' });
+  indexProject({ cwd: dir });
+  assert.equal(queryIndex({ cwd: dir, query: 'backfillterm', filters: { project: 'zbrain', type: 'reports', fromDate: '2026-07-01' } }).results.length, 1);
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('symlink escape under root is rejected/skipped', () => {
   const dir = fixture();
   const outside = mkdtempSync(path.join(tmpdir(), 'zbrain-outside-'));
