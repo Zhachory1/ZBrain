@@ -76,15 +76,16 @@ zbrain query "what did we decide about vector-heavy hybrid?" --json
 
 The index stores raw Markdown bodies/chunks locally in SQLite. It is not uploaded by ZBrain, but do not commit or share `.zbrain/`.
 
-Run embeddings only after import succeeds:
+After first import, maintain the index from inside the target repo:
 
 ```bash
 cd ~/private-docs
-zbrain embed --json
+zbrain index --json
+zbrain embed --stale --json
 zbrain hquery "what did we decide about vector-heavy hybrid?" --json
 ```
 
-`embed --stale` is planned for a later milestone.
+`index` updates changed/deleted Markdown docs incrementally when an index already exists. `embed --stale` embeds only chunks missing the active model's current embedding input hash.
 
 ## Local-only behavior
 
@@ -170,6 +171,12 @@ Embed chunks:
 
 ```bash
 zbrain embed --json
+```
+
+Embed only missing or stale chunks after an incremental index:
+
+```bash
+zbrain embed --stale --json
 ```
 
 Vector query:

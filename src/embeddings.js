@@ -5,7 +5,8 @@ const DEFAULT_EMBEDDINGS = {
 };
 
 export function resolveEmbeddingConfig(config = {}) {
-  const embeddings = { ...DEFAULT_EMBEDDINGS, ...(config.embeddings || {}) };
+  const source = config.embeddings || (config.provider ? config : {});
+  const embeddings = { ...DEFAULT_EMBEDDINGS, ...source };
   if (embeddings.provider !== 'ollama') throw new Error('M7 supports only ollama embeddings');
   const url = new URL(embeddings.baseUrl);
   if (url.protocol !== 'http:') throw new Error('embedding baseUrl must use http loopback');
@@ -23,6 +24,7 @@ export async function embedText(text, config, { timeoutMs = 30_000 } = {}) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model: embeddings.model, prompt: String(text).slice(0, 500) }),
+      redirect: 'manual',
       signal: controller.signal,
     });
     if (!response.ok) {

@@ -77,6 +77,18 @@ test('import rejects existing index without force and backs it up with force', (
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('force import rebuilds corrupt existing index', () => {
+  const dir = fixture();
+  mkdirSync(path.join(dir, '.zbrain'), { recursive: true });
+  writeFileSync(path.join(dir, '.zbrain/config.json'), JSON.stringify({ schemaVersion: 1, root: '.' }, null, 2));
+  writeFileSync(path.join(dir, '.zbrain/index.sqlite'), 'not sqlite');
+  const forced = importProject({ target: dir, force: true });
+  assert.equal(forced.import.dbAction, 'overwritten');
+  assert.ok(forced.import.backups.dbPath);
+  assert.equal(queryIndex({ cwd: dir, query: 'alpha needle', limit: 5 }).results[0].id, 'docs/release.md');
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('failed import on existing index does not create config but still enforces gitignore', () => {
   const dir = fixture();
   mkdirSync(path.join(dir, '.zbrain'), { recursive: true });
@@ -144,12 +156,51 @@ test('get rejects chunk id', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('rebuild removes deleted docs', () => {
+test('incremental reindex reports unchanged docs', () => {
+  const dir = fixture();
+  initProject({ cwd: dir, root: './docs' });
+  indexProject({ cwd: dir });
+  const indexed = indexProject({ cwd: dir });
+  assert.equal(indexed.documents, 3);
+  assert.equal(indexed.changed, 0);
+  assert.equal(indexed.unchanged, 3);
+  assert.equal(indexed.deleted, 0);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('incremental reindex adds new docs', () => {
+  const dir = fixture();
+  initProject({ cwd: dir, root: './docs' });
+  indexProject({ cwd: dir });
+  writeFileSync(path.join(dir, 'docs', 'new.md'), '# New Note\n\ngamma marker\n');
+  const indexed = indexProject({ cwd: dir });
+  assert.equal(indexed.changed, 1);
+  assert.equal(indexed.unchanged, 3);
+  assert.equal(indexed.documents, 4);
+  assert.equal(queryIndex({ cwd: dir, query: 'gamma marker', limit: 5 }).results[0].id, 'new.md');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('incremental reindex updates changed docs', () => {
+  const dir = fixture();
+  initProject({ cwd: dir, root: './docs' });
+  indexProject({ cwd: dir });
+  writeFileSync(path.join(dir, 'docs', 'release.md'), '# Release Note\n\nLocal retrieval works with beta needle.\n');
+  const indexed = indexProject({ cwd: dir });
+  assert.equal(indexed.changed, 1);
+  assert.equal(indexed.unchanged, 2);
+  assert.equal(queryIndex({ cwd: dir, query: 'beta', limit: 5 }).results[0].id, 'release.md');
+  assert.equal(queryIndex({ cwd: dir, query: 'alpha', limit: 5 }).results.length, 0);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('incremental reindex removes deleted docs', () => {
   const dir = fixture();
   initProject({ cwd: dir, root: './docs' });
   indexProject({ cwd: dir });
   rmSync(path.join(dir, 'docs', 'release.md'));
-  indexProject({ cwd: dir });
+  const indexed = indexProject({ cwd: dir });
+  assert.equal(indexed.deleted, 1);
   const query = queryIndex({ cwd: dir, query: 'alpha needle', limit: 5 });
   assert.equal(query.results.length, 0);
   rmSync(dir, { recursive: true, force: true });

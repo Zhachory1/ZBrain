@@ -9,6 +9,7 @@ import { cosine, embedText, resolveEmbeddingConfig } from './embeddings.js';
 export const ZBRAIN_DIR = '.zbrain';
 export const CONFIG_PATH = '.zbrain/config.json';
 export const DB_PATH = '.zbrain/index.sqlite';
+const EMBEDDING_INPUT_VERSION = 'v1:prompt-slice-500';
 
 export function initProject({ root, force = false, cwd = process.cwd() }) {
   if (!root) throw new Error('--path is required');
@@ -101,7 +102,7 @@ export function importProject({ target, cwd = process.cwd(), force = false } = {
     dbAction = 'overwritten';
   }
 
-  const indexed = indexProject({ cwd: absTarget });
+  const indexed = indexProject({ cwd: absTarget, forceRebuild: dbExists && force });
   const status = statusIndex({ cwd: absTarget }).status;
   return {
     schemaVersion: 1,
@@ -173,20 +174,23 @@ function normalizeRel(value) {
   return String(value).replace(/\\/g, '/');
 }
 
-export function indexProject({ cwd = process.cwd() } = {}) {
+export function indexProject({ cwd = process.cwd(), forceRebuild = false } = {}) {
   const config = loadConfig(cwd);
   preflightSqlite();
   mkdirSync(path.join(cwd, ZBRAIN_DIR), { recursive: true });
   const db = path.join(cwd, DB_PATH);
-  const tmp = `${db}.tmp`;
-  const bak = `${db}.bak`;
-  rmSync(tmp, { force: true });
   const docs = readDocuments(config.rootAbs, cwd);
+  if (existsSync(db) && !forceRebuild) return updateIndexDb(db, docs);
+  const tmp = `${db}.tmp`;
+  rmSync(tmp, { force: true });
   createIndexDb(tmp, docs);
   validateDb(tmp, docs.length);
-  if (existsSync(db)) copyFileSync(db, bak);
+  if (existsSync(db)) {
+    rmSync(`${db}-wal`, { force: true });
+    rmSync(`${db}-shm`, { force: true });
+  }
   renameSync(tmp, db);
-  return { dbPath: DB_PATH, documents: docs.length };
+  return { dbPath: DB_PATH, documents: docs.length, changed: docs.length, unchanged: 0, deleted: 0 };
 }
 
 function readDocuments(root, cwd) {
@@ -225,15 +229,52 @@ function chunkBody(body, linesPerChunk = 120) {
   return chunks.length ? chunks : [{ lineStart: 1, lineEnd: 1, text: '' }];
 }
 
+function updateIndexDb(db, docs) {
+  const tmp = `${db}.tmp`;
+  rmSync(tmp, { force: true });
+  runSql(db, 'PRAGMA wal_checkpoint(FULL);');
+  copyFileSync(db, tmp);
+  ensureEmbeddingInputHashColumn(tmp);
+  const existing = runSqlJson(tmp, 'SELECT id, hash FROM documents;');
+  const existingById = new Map(existing.map((row) => [row.id, row.hash]));
+  const incomingIds = new Set(docs.map((doc) => doc.id));
+  let changed = 0;
+  let unchanged = 0;
+  let deleted = 0;
+  const statements = ['BEGIN IMMEDIATE;'];
+  for (const row of existing) {
+    if (!incomingIds.has(row.id)) {
+      statements.push(`DELETE FROM documents WHERE id = ${q(row.id)};`);
+      statements.push(`DELETE FROM chunks_fts WHERE document_id = ${q(row.id)};`);
+      statements.push(`DELETE FROM chunk_embeddings WHERE document_id = ${q(row.id)};`);
+      deleted += 1;
+    }
+  }
+  for (const doc of docs) {
+    if (existingById.get(doc.id) === doc.hash) {
+      unchanged += 1;
+      continue;
+    }
+    statements.push(`DELETE FROM chunks_fts WHERE document_id = ${q(doc.id)};`);
+    statements.push(`DELETE FROM chunk_embeddings WHERE document_id = ${q(doc.id)};`);
+    statements.push(documentInsertSql(doc));
+    for (let i = 0; i < doc.chunks.length; i += 1) statements.push(chunkInsertSql(doc, i));
+    changed += 1;
+  }
+  statements.push('COMMIT;');
+  runSql(tmp, statements.join('\n'));
+  validateDb(tmp, docs.length);
+  validateIndexInvariants(tmp, docs);
+  copyFileSync(db, `${db}.bak`);
+  renameSync(tmp, db);
+  return { dbPath: DB_PATH, documents: docs.length, changed, unchanged, deleted };
+}
+
 function createIndexDb(db, docs) {
   const statements = [schemaSql(), 'BEGIN;'];
   for (const doc of docs) {
-    statements.push(`INSERT INTO documents(id,path,title,hash,mtime_ms,size_bytes,body,updated_at) VALUES (${q(doc.id)},${q(doc.path)},${q(doc.title)},${q(doc.hash)},${doc.mtimeMs},${doc.sizeBytes},${q(doc.body)},${q(new Date().toISOString())});`);
-    for (let i = 0; i < doc.chunks.length; i += 1) {
-      const chunk = doc.chunks[i];
-      const chunkId = `${doc.id}#${i}`;
-      statements.push(`INSERT INTO chunks_fts(chunk_id,document_id,path,hash,line_start,line_end,title,text) VALUES (${q(chunkId)},${q(doc.id)},${q(doc.path)},${q(doc.hash)},${chunk.lineStart},${chunk.lineEnd},${q(doc.title)},${q(chunk.text)});`);
-    }
+    statements.push(documentInsertSql(doc));
+    for (let i = 0; i < doc.chunks.length; i += 1) statements.push(chunkInsertSql(doc, i));
   }
   statements.push('COMMIT;');
   runSql(db, statements.join('\n'));
@@ -275,15 +316,40 @@ CREATE TABLE IF NOT EXISTS chunk_embeddings (
   model TEXT NOT NULL,
   dims INTEGER NOT NULL,
   embedding_json TEXT NOT NULL,
+  input_hash TEXT,
   updated_at TEXT NOT NULL
 );
 `;
+}
+
+function documentInsertSql(doc) {
+  return `INSERT OR REPLACE INTO documents(id,path,title,hash,mtime_ms,size_bytes,body,updated_at) VALUES (${q(doc.id)},${q(doc.path)},${q(doc.title)},${q(doc.hash)},${doc.mtimeMs},${doc.sizeBytes},${q(doc.body)},${q(new Date().toISOString())});`;
+}
+
+function chunkInsertSql(doc, i) {
+  const chunk = doc.chunks[i];
+  const chunkId = `${doc.id}#${i}`;
+  return `INSERT INTO chunks_fts(chunk_id,document_id,path,hash,line_start,line_end,title,text) VALUES (${q(chunkId)},${q(doc.id)},${q(doc.path)},${q(doc.hash)},${chunk.lineStart},${chunk.lineEnd},${q(doc.title)},${q(chunk.text)});`;
 }
 
 function validateDb(db, expectedDocs) {
   const status = statusIndex({ dbPath: db });
   if (status.status.schemaVersion !== 1) throw new Error('invalid schemaVersion after index');
   if (status.status.documents !== expectedDocs) throw new Error('document count mismatch after index');
+}
+
+function validateIndexInvariants(db, docs) {
+  const expectedChunks = docs.reduce((sum, doc) => sum + doc.chunks.length, 0);
+  const rows = runSqlJson(db, `SELECT (SELECT COUNT(*) FROM chunks_fts) AS chunks, (SELECT COUNT(*) FROM chunks_fts WHERE document_id NOT IN (SELECT id FROM documents)) AS fts_orphans, (SELECT COUNT(*) FROM chunk_embeddings WHERE document_id NOT IN (SELECT id FROM documents)) AS embedding_orphans;`);
+  const row = rows[0] || {};
+  if (Number(row.chunks) !== expectedChunks) throw new Error('chunk count mismatch after index');
+  if (Number(row.fts_orphans) !== 0) throw new Error('fts orphan rows after index');
+  if (Number(row.embedding_orphans) !== 0) throw new Error('embedding orphan rows after index');
+}
+
+function ensureEmbeddingInputHashColumn(db) {
+  const cols = runSqlJson(db, 'PRAGMA table_info(chunk_embeddings);').map((row) => row.name);
+  if (!cols.includes('input_hash')) runSql(db, 'ALTER TABLE chunk_embeddings ADD COLUMN input_hash TEXT;');
 }
 
 export function queryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) }) {
@@ -352,18 +418,35 @@ export function statusIndex({ cwd = process.cwd(), dbPath = path.join(cwd, DB_PA
 }
 
 
-export async function embedProject({ cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) } = {}) {
+export async function embedProject({ cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH), staleOnly = false } = {}) {
+  if (!existsSync(dbPath)) throw new Error('no index found. Run: zbrain index');
   const config = loadConfig(cwd);
   const embeddingConfig = resolveEmbeddingConfig(config);
+  ensureEmbeddingInputHashColumn(dbPath);
   const chunks = runSqlJson(dbPath, `SELECT chunk_id, document_id, path, line_start, line_end, title, text FROM chunks_fts;`);
+  const existing = staleOnly ? new Map(runSqlJson(dbPath, `SELECT chunk_id, input_hash FROM chunk_embeddings WHERE model = ${q(embeddingConfig.model)};`).map((row) => [row.chunk_id, row.input_hash])) : new Map();
   let embedded = 0;
+  let skipped = 0;
   for (const chunk of chunks) {
-    const prompt = `title: ${chunk.title}\npath: ${chunk.path}\ntext: ${chunk.text}`;
+    const prompt = embeddingInput(chunk);
+    const inputHash = embeddingInputHash(prompt);
+    if (staleOnly && existing.get(chunk.chunk_id) === inputHash) {
+      skipped += 1;
+      continue;
+    }
     const { embedding, model } = await embedText(prompt, embeddingConfig);
-    runSql(dbPath, `INSERT OR REPLACE INTO chunk_embeddings(chunk_id,document_id,path,line_start,line_end,title,text,model,dims,embedding_json,updated_at) VALUES (${q(chunk.chunk_id)},${q(chunk.document_id)},${q(chunk.path)},${Number(chunk.line_start)},${Number(chunk.line_end)},${q(chunk.title)},${q(chunk.text)},${q(model)},${embedding.length},${q(JSON.stringify(embedding))},${q(new Date().toISOString())});`);
+    runSql(dbPath, `INSERT OR REPLACE INTO chunk_embeddings(chunk_id,document_id,path,line_start,line_end,title,text,model,dims,embedding_json,input_hash,updated_at) VALUES (${q(chunk.chunk_id)},${q(chunk.document_id)},${q(chunk.path)},${Number(chunk.line_start)},${Number(chunk.line_end)},${q(chunk.title)},${q(chunk.text)},${q(model)},${embedding.length},${q(JSON.stringify(embedding))},${q(inputHash)},${q(new Date().toISOString())});`);
     embedded += 1;
   }
-  return { schemaVersion: 1, embedded, model: embeddingConfig.model };
+  return { schemaVersion: 1, embedded, skipped, model: embeddingConfig.model };
+}
+
+function embeddingInput(chunk) {
+  return `title: ${chunk.title}\npath: ${chunk.path}\ntext: ${chunk.text}`;
+}
+
+function embeddingInputHash(prompt) {
+  return createHash('sha256').update(`${EMBEDDING_INPUT_VERSION}\n${String(prompt).slice(0, 500)}`).digest('hex').slice(0, 16);
 }
 
 export async function vqueryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) }) {
@@ -409,7 +492,7 @@ function fts5Available() {
 }
 
 function runSql(db, sql) {
-  const result = spawnSync('sqlite3', [db], { input: sql, encoding: 'utf8', maxBuffer: 100 * 1024 * 1024, timeout: 10_000 });
+  const result = spawnSync('sqlite3', [db], { input: `.bail on\n${sql}`, encoding: 'utf8', maxBuffer: 100 * 1024 * 1024, timeout: 10_000 });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error((result.stderr || result.stdout || 'sqlite3 failed').trim());
   return result.stdout;

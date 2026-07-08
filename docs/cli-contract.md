@@ -117,7 +117,7 @@ Safety behavior:
 zbrain index [--json]
 ```
 
-Builds `.zbrain/index.sqlite` from markdown.
+Builds `.zbrain/index.sqlite` from Markdown. First run creates the DB. Later runs update existing DBs incrementally by document hash and report `changed`, `unchanged`, and `deleted` counts while preserving unchanged embeddings.
 
 ## query
 
@@ -240,10 +240,18 @@ Example explain shape:
 ## embed
 
 ```bash
-zbrain embed [--json]
+zbrain embed [--stale] [--json]
 ```
 
 Embeds current indexed chunks using configured local Ollama provider.
+
+`--stale` skips chunks that already have an embedding for the active model and the current embedding input hash. Existing rows without an input hash are treated as stale.
+
+Success:
+
+```json
+{ "schemaVersion": 1, "embedded": 1, "skipped": 843, "model": "mxbai-embed-large:latest" }
+```
 
 ## vquery
 

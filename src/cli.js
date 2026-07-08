@@ -17,7 +17,7 @@ function parseArgs(args) {
     }
     if (arg === '--local-only') continue; // legacy alias; local-only is default
     if (arg === '--allow-network') throw new Error('--allow-network is not supported in M0/M1');
-    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths') {
+    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths' || arg === '--stale') {
       parsed[arg.slice(2)] = true;
       continue;
     }
@@ -136,7 +136,7 @@ export async function main(args) {
   }
 
   if (command === 'embed') {
-    print(await embedProject(), parsed.json);
+    print(await embedProject({ staleOnly: Boolean(parsed.stale) }), parsed.json);
     return;
   }
   if (command === 'vquery') {
@@ -236,7 +236,7 @@ function print(value, json = false) {
 
 function printHelp() {
   console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--json] [--no-aliases] [--explain]
-  embed [--json]
+  embed [--stale] [--json]
   vquery <text> [--limit N] [--json]
   hquery <text> [--mode exact|broad|hybrid] [--limit N] [--json] [--explain]\n  get <documentId> [--from N] [--lines N] [--json]\n  status [--json]\n  tune --manifest <path> --output <proposal.json> [--json]
   bench --manifest <path> [--mode bm25] [--json out.json] [--md out.md] [--allow-repo-aggregate-output] [--allow-raw-public-report]\n  privacy-probe\n`);
