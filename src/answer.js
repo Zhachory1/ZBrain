@@ -1,7 +1,7 @@
 import { getDocument } from './store.js';
 import { retrieve } from './retrieval.js';
 
-const STOPWORDS = new Set(['the','a','an','to','for','of','and','or','in','on','where','what','which','did','we','with','when','how','why','is','are','was','were','about','that','this','into','from']);
+const STOPWORDS = new Set(['the','a','an','to','for','of','and','or','in','on','where','what','which','did','we','with','when','how','why','is','are','was','were','about','that','this','into','from','decide','decided','decision','decisions']);
 
 export async function answerQuery({ query, mode = 'exact', limit = 5, filters = {}, noAliases = false, cwd = process.cwd() }) {
   if (!['exact', 'broad', 'hybrid'].includes(mode)) throw new Error(`invalid answer mode: ${mode}`);

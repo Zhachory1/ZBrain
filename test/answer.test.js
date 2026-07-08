@@ -52,6 +52,17 @@ test('CLI answer rejects out-of-contract mode', async () => {
   }
 });
 
+test('answer ignores decision-intent words when selecting evidence', async () => {
+  const dir = fixture();
+  try {
+    const result = await answerQuery({ cwd: dir, query: 'what did we decide about vector-heavy hybrid', filters: { project: 'zbrain' } });
+    assert.equal(result.answer.status, 'evidence_found');
+    assert.match(result.evidence[0].quote, /Vector-heavy hybrid earns more/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('answer returns extractive evidence with exact citation line', async () => {
   const dir = fixture();
   try {
