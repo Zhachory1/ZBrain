@@ -26,7 +26,7 @@ export function reciprocalRankFusion(lists, weights = {}, k = 60) {
     .map(([id, score], index) => ({ id, score, rank: index + 1, sourceRanks: ranks.get(id) }));
 }
 
-export function mergeHybridResults({ bm25 = [], vector = [], weights = { bm25: 2, vector: 1 }, limit = 10 }) {
+export function mergeHybridResults({ bm25 = [], vector = [], weights = { bm25: 1, vector: 2 }, limit = 10 }) {
   const byId = new Map();
   for (const result of vector) byId.set(result.id, { ...result, source: 'vector' });
   for (const result of bm25) byId.set(result.id, { ...result, source: 'bm25' });

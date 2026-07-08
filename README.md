@@ -166,7 +166,7 @@ Private manifests must write proposals under `~/.zbrain/tuning/`.
 
 - exact/session/ticket/version-like queries use BM25 + aliases
 - broad/topical queries use vector retrieval
-- explicit `--mode hybrid` runs offline RRF over BM25 and vector results
+- explicit `--mode hybrid` runs vector-heavy offline RRF over BM25 and vector results
 
 ```bash
 zbrain hquery "session 2026-06-30 mewrite release" --json

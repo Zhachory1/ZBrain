@@ -220,7 +220,7 @@ Intent-aware retrieval:
 
 - `exact` / `bm25`: BM25 + aliases
 - `broad` / `vector`: vector retrieval
-- `hybrid`: reciprocal rank fusion over BM25 and vector
+- `hybrid`: vector-heavy reciprocal rank fusion over BM25 and vector
 
 Auto intent is heuristic and conservative. Exact/session/ticket/version queries stay lexical. Broad/topic/research queries use vector.
 

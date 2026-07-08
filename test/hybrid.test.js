@@ -14,6 +14,11 @@ test('reciprocalRankFusion combines source ranks', () => {
   assert.deepEqual(fused[0].sourceRanks, { bm25: 2, vector: 1 });
 });
 
+test('mergeHybridResults defaults to vector-heavy ranking', () => {
+  const results = mergeHybridResults({ bm25: [{ id: 'a', snippet: 'bm25' }], vector: [{ id: 'b', snippet: 'vector' }] });
+  assert.equal(results[0].id, 'b');
+});
+
 test('mergeHybridResults preserves bm25 result fields when available', () => {
   const results = mergeHybridResults({ bm25: [{ id: 'a', snippet: 'bm25' }], vector: [{ id: 'a', snippet: 'vector' }] });
   assert.equal(results[0].snippet, 'bm25');
