@@ -354,6 +354,16 @@ function validateIndexInvariants(db, docs) {
   if (Number(row.embedding_orphans) !== 0) throw new Error('embedding orphan rows after index');
 }
 
+export function assertMetadataReady({ cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) } = {}) {
+  const cols = runSqlJson(dbPath, 'PRAGMA table_info(documents);').map((row) => row.name);
+  if (!cols.includes('project') || !cols.includes('doc_type') || !cols.includes('doc_date')) {
+    const error = new Error('index metadata missing; run zbrain index');
+    error.code = 'index_requires_upgrade';
+    error.nextStep = 'zbrain index';
+    throw error;
+  }
+}
+
 function ensureDocumentMetadataColumns(db) {
   const cols = runSqlJson(db, 'PRAGMA table_info(documents);').map((row) => row.name);
   if (!cols.includes('project')) runSql(db, 'ALTER TABLE documents ADD COLUMN project TEXT;');
@@ -445,10 +455,7 @@ export function queryIndex({ query, limit = 10, cwd = process.cwd(), dbPath = pa
   const terms = [...new Set(tokenize(query))].slice(0, 64);
   if (terms.length === 0) throw new Error('query has no searchable terms');
   const normalizedFilters = normalizeFilters(filters);
-  if (hasFilters(normalizedFilters)) {
-    ensureDocumentMetadataColumns(dbPath);
-    backfillDocumentMetadata(dbPath);
-  }
+  if (hasFilters(normalizedFilters)) assertMetadataReady({ cwd, dbPath });
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
   const match = terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' OR ');
   const filterSql = documentFilterSubquerySql(normalizedFilters, 'document_id');
@@ -550,10 +557,7 @@ export async function vqueryIndex({ query, limit = 10, cwd = process.cwd(), dbPa
   const config = loadConfig(cwd);
   const embeddingConfig = resolveEmbeddingConfig(config);
   const normalizedFilters = normalizeFilters(filters);
-  if (hasFilters(normalizedFilters)) {
-    ensureDocumentMetadataColumns(dbPath);
-    backfillDocumentMetadata(dbPath);
-  }
+  if (hasFilters(normalizedFilters)) assertMetadataReady({ cwd, dbPath });
   const model = embeddingConfig.model;
   const globalRows = runSqlJson(dbPath, `SELECT COUNT(*) AS count FROM chunk_embeddings WHERE model = ${q(model)};`);
   if (Number(globalRows[0]?.count || 0) === 0) throw new Error('no embeddings found. Run: zbrain embed');
@@ -586,13 +590,13 @@ export function preflightSqlite() {
 }
 
 function sqliteVersion() {
-  const result = spawnSync('sqlite3', ['--version'], { encoding: 'utf8' });
+  const result = spawnSync('sqlite3', ['--version'], { encoding: 'utf8', timeout: 10_000 });
   if (result.status !== 0) throw new Error('sqlite3 not found. Install SQLite with FTS5 support.');
   return result.stdout.trim().split(/\s+/)[0];
 }
 
 function fts5Available() {
-  const result = spawnSync('sqlite3', [':memory:'], { input: 'CREATE VIRTUAL TABLE x USING fts5(y);', encoding: 'utf8' });
+  const result = spawnSync('sqlite3', [':memory:'], { input: 'CREATE VIRTUAL TABLE x USING fts5(y);', encoding: 'utf8', timeout: 10_000 });
   return result.status === 0;
 }
 

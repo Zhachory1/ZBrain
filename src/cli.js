@@ -5,6 +5,7 @@ import path from 'node:path';
 import { expandAliases, validateAliases } from './aliases.js';
 import { answerQuery, formatAnswerText } from './answer.js';
 import { retrieve } from './retrieval.js';
+import { formatSearchText, searchQuery } from './search.js';
 import { embedProject, getDocument, importProject, indexProject, initProject, loadConfig, preflightProject, queryIndex, statusIndex, vqueryIndex } from './store.js';
 
 function parseArgs(args) {
@@ -40,7 +41,7 @@ export async function main(args) {
   if (args.includes('--allow-network')) throw new Error('--allow-network is not supported');
   const earlyCommand = args.find((arg) => !arg.startsWith('--'));
   const answerMode = args[args.indexOf('--mode') + 1];
-  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery' || (earlyCommand === 'answer' && ['broad', 'vector', 'hybrid'].includes(answerMode));
+  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery' || ((earlyCommand === 'answer' || earlyCommand === 'search') && ['broad', 'vector', 'hybrid'].includes(answerMode));
   if (!loopbackCommand) {
     if (shouldWrapLocalOnly(args)) runInMacSandbox(args);
     failIfUnsupportedLocalOnly();
@@ -88,6 +89,14 @@ export async function main(args) {
   if (command === 'import') {
     const target = parsed._[1];
     print(importProject({ target, force: Boolean(parsed.force) }), parsed.json);
+    return;
+  }
+  if (command === 'search') {
+    assertAllowedOptions(parsed, ['json', 'limit', 'mode', ...FILTER_FLAGS]);
+    const mode = parsed.mode || 'exact';
+    const result = await searchQuery({ query: parsed._.slice(1).join(' '), mode, limit: parsed.limit, filters: filtersFromParsed(parsed) });
+    if (parsed.json) print(result, true);
+    else process.stdout.write(formatSearchText(result));
     return;
   }
   if (command === 'query') {
@@ -239,7 +248,8 @@ function print(value, json = false) {
 }
 
 function printHelp() {
-  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  index [--json]\n  query <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--no-aliases] [--explain]
+  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  index [--json]\n  search <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
+  query <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--no-aliases] [--explain]
   embed [--stale] [--json]
   vquery <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
   hquery <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--explain]

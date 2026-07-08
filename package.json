@@ -4,7 +4,8 @@
   "description": "Local-first brain/RAG benchmark and retrieval tool",
   "type": "module",
   "bin": {
-    "zbrain": "bin/zbrain.js"
+    "zbrain": "bin/zbrain.js",
+    "zbrain-mcp": "bin/zbrain-mcp.js"
   },
   "scripts": {
     "test": "node --test",

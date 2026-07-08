@@ -149,6 +149,29 @@ Semantics:
 - unknown retrieval flags are errors
 - filters stay local SQL only; they are not added to embedding prompts
 
+## search
+
+```bash
+zbrain search <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
+```
+
+Gbrain-like ranked retrieval. Defaults to exact/BM25 and does not require embeddings. Use `--mode broad` or `--mode hybrid` explicitly for loopback embedding retrieval.
+
+JSON result:
+
+```json
+{
+  "schemaVersion": 1,
+  "query": { "text": "foo", "mode": "exact", "retrievalMode": "bm25", "limit": 10, "filters": {}, "network": "none" },
+  "results": [
+    { "rank": 1, "id": "doc.md", "score": 12.3, "path": "doc.md", "title": "Doc", "lineStart": 1, "lineEnd": 10, "hash": "abc", "snippet": "..." }
+  ],
+  "truncated": false
+}
+```
+
+M22 is close-compatible with `gbrain search`, not a full output clone.
+
 ## query
 
 ```bash

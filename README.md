@@ -6,16 +6,20 @@ ZBrain aims to merge useful doc-retrieval ideas from QMD and gbrain while keepin
 
 ## Status
 
-M4 local markdown/doc-RAG CLI exists:
+Current local markdown/doc-RAG CLI exists:
 
 - project-local or full-brain `.zbrain/`
 - explicit local query aliases
 - SQLite/FTS5 index
-- `init`, `preflight`, `import`, `index`, `query`, `get`, `status`
+- `init`, `preflight`, `import`, `index`, `query`, `search`, `hquery`, `answer`, `get`, `status`
+- local embeddings through loopback Ollama
+- incremental indexing and `embed --stale`
+- metadata filters
+- local stdio MCP server: `zbrain-mcp --root <brain>`
 - synthetic benchmark harness
 - local-only runner smoke test
 
-No external embeddings, pgvector, MCP runtime, auto-indexing, or briefings yet.
+No pgvector, remote MCP transport, auto-indexing daemon, or briefings yet.
 
 ## Requirements
 
@@ -96,6 +100,13 @@ zbrain hquery "vector retrieval" --path-prefix projects/zbrain --json
 
 Filters are local SQL only. They are not added to embedding prompts. Metadata is path-derived: `projects/<slug>/<type>/...` sets project/type, top-level folders set type, and the first `YYYY-MM-DD` in the relative path sets date.
 
+Use a gbrain-like search command:
+
+```bash
+zbrain search "vector-heavy hybrid" --project zbrain
+zbrain search "semantic retrieval" --mode broad --project zbrain --json
+```
+
 Get an extractive cited evidence digest:
 
 ```bash
@@ -103,6 +114,27 @@ zbrain answer "what did we decide about vector-heavy hybrid?" --project zbrain -
 ```
 
 `answer` defaults to exact/BM25 mode and quotes indexed source lines with citations. It reports `evidence_found`, `weak_evidence`, or `insufficient_evidence`; it does not generate abstractive answers.
+
+Run local MCP server for agents:
+
+```bash
+zbrain-mcp --root ~/private-docs
+```
+
+Example MCP config:
+
+```json
+{
+  "mcpServers": {
+    "zbrain": {
+      "command": "zbrain-mcp",
+      "args": ["--root", "/Users/zhach/private-docs"]
+    }
+  }
+}
+```
+
+MCP tools are read-only and bounded. Tool output can contain private snippets/paths; local MCP clients are trusted to see them.
 
 ## Local-only behavior
 
