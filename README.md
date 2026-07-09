@@ -89,7 +89,23 @@ zbrain embed --stale --json
 zbrain hquery "what did we decide about vector-heavy hybrid?" --json
 ```
 
-`index` updates changed/deleted Markdown docs incrementally when an index already exists. `embed --stale` embeds only chunks missing the active model's current embedding input hash.
+For active uncommitted notes, run a local indexing watcher:
+
+```bash
+cd ~/private-docs
+zbrain watch --interval 5
+```
+
+For launchd/polling setups that also refresh stale embeddings, use one-shot mode:
+
+```bash
+cd ~/private-docs
+zbrain watch --once --embed-stale --json
+```
+
+`--embed-stale` is intentionally one-shot only; long-lived watch loops should not continuously send private chunks to the local embedding endpoint.
+
+`index` updates changed/deleted Markdown docs incrementally when an index already exists. `embed --stale` embeds only chunks missing the active model's current embedding input hash. `watch` does not commit or mutate Markdown files; it refreshes `.zbrain/index.sqlite` and optionally stale embeddings.
 
 Narrow retrieval with local metadata filters:
 

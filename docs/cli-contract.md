@@ -119,6 +119,43 @@ zbrain index [--json]
 
 Builds `.zbrain/index.sqlite` from Markdown. First run creates the DB. Later runs update existing DBs incrementally by document hash and report `changed`, `unchanged`, and `deleted` counts while preserving unchanged embeddings.
 
+## watch
+
+```bash
+zbrain watch [path] [--interval N] [--once] [--embed-stale] [--json]
+```
+
+Polls a ZBrain root and refreshes the local index so uncommitted Markdown changes become searchable without waiting for Git post-commit.
+
+- default path: current cwd
+- default interval: 5 seconds
+- `--once`: run one refresh pass and exit
+- `--embed-stale`: also run stale-only local embeddings after indexing; allowed only with `--once`
+- log file: `<path>/.zbrain/watch.log`, rotated at roughly 1 MB
+
+Long-running `watch` fingerprints Markdown paths/sizes/mtimes and skips DB writes when unchanged. `watch` does not commit or modify Markdown files. It ignores denied paths through the same indexing denylist (`.git/`, `.zbrain/`, caches/build outputs, etc.).
+
+Recommended macOS polling setup:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>local.zbrain.private-docs.watch-once</string>
+  <key>ProgramArguments</key><array>
+    <string>/opt/homebrew/bin/zbrain</string>
+    <string>watch</string>
+    <string>/Users/zhach/private-docs</string>
+    <string>--once</string>
+    <string>--embed-stale</string>
+    <string>--json</string>
+  </array>
+  <key>StartInterval</key><integer>300</integer>
+  <key>StandardOutPath</key><string>/Users/zhach/.zbrain/watch-launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/zhach/.zbrain/watch-launchd.err</string>
+</dict></plist>
+```
+
 ## Retrieval filters
 
 `query`, `vquery`, and `hquery` accept optional local metadata filters:

@@ -7,6 +7,7 @@ import { answerQuery, formatAnswerText } from './answer.js';
 import { retrieve } from './retrieval.js';
 import { formatSearchText, searchQuery } from './search.js';
 import { embedProject, getDocument, importProject, indexProject, initProject, loadConfig, preflightProject, queryIndex, statusIndex, vqueryIndex } from './store.js';
+import { watchProject } from './watch.js';
 
 function parseArgs(args) {
   const parsed = { _: [] };
@@ -19,7 +20,7 @@ function parseArgs(args) {
     }
     if (arg === '--local-only') continue; // legacy alias; local-only is default
     if (arg === '--allow-network') throw new Error('--allow-network is not supported in M0/M1');
-    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths' || arg === '--stale' || arg === '--cite') {
+    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths' || arg === '--stale' || arg === '--embed-stale' || arg === '--once' || arg === '--cite') {
       parsed[arg.slice(2)] = true;
       continue;
     }
@@ -41,7 +42,7 @@ export async function main(args) {
   if (args.includes('--allow-network')) throw new Error('--allow-network is not supported');
   const earlyCommand = args.find((arg) => !arg.startsWith('--'));
   const answerMode = args[args.indexOf('--mode') + 1];
-  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery' || ((earlyCommand === 'answer' || earlyCommand === 'search') && ['broad', 'vector', 'hybrid'].includes(answerMode));
+  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery' || (earlyCommand === 'watch' && args.includes('--embed-stale')) || ((earlyCommand === 'answer' || earlyCommand === 'search') && ['broad', 'vector', 'hybrid'].includes(answerMode));
   if (!loopbackCommand) {
     if (shouldWrapLocalOnly(args)) runInMacSandbox(args);
     failIfUnsupportedLocalOnly();
@@ -89,6 +90,12 @@ export async function main(args) {
   if (command === 'import') {
     const target = parsed._[1];
     print(importProject({ target, force: Boolean(parsed.force) }), parsed.json);
+    return;
+  }
+  if (command === 'watch') {
+    const target = parsed._[1] || '.';
+    const result = await watchProject({ target, interval: parsed.interval, once: Boolean(parsed.once), embedStale: Boolean(parsed['embed-stale']) });
+    print(result, parsed.json);
     return;
   }
   if (command === 'search') {
@@ -248,7 +255,7 @@ function print(value, json = false) {
 }
 
 function printHelp() {
-  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  index [--json]\n  search <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
+  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  watch [path] [--interval N] [--once] [--embed-stale] [--json]\n  index [--json]\n  search <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
   query <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--no-aliases] [--explain]
   embed [--stale] [--json]
   vquery <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
