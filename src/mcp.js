@@ -93,7 +93,7 @@ function writeMessage(output, message) {
 }
 
 function initializeResult() {
-  return { protocolVersion: '2024-11-05', serverInfo: { name: 'zbrain', version: '0.7.0' }, capabilities: { tools: {} } };
+  return { protocolVersion: '2024-11-05', serverInfo: { name: 'zbrain', version: '0.8.0' }, capabilities: { tools: {} } };
 }
 
 async function callTool(params, context) {
