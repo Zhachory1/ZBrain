@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { indexProject, initProject } from '../src/store.js';
 
 const bin = path.resolve('bin/zbrain.js');
 
@@ -40,6 +41,29 @@ test('CLI accepts --help and -h', () => {
     assert.equal(result.status, 0);
     assert.match(result.stdout, /Commands:/);
   }
+});
+
+test('CLI brief runs offline listing without network opt-in', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'zbrain-cli-brief-'));
+  mkdirSync(path.join(dir, 'inbox'), { recursive: true });
+  writeFileSync(path.join(dir, 'inbox/2026-07-22-note.md'), '# Note\n\nbody\n');
+  initProject({ cwd: dir, root: '.' });
+  indexProject({ cwd: dir });
+  try {
+    const result = spawnSync(process.execPath, [bin, 'brief', '--period', 'weekly', '--date', '2026-07-23', '--json'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.written, true);
+    assert.equal(parsed.source, 'offline-listing');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('CLI still rejects --allow-network for non-brief commands', () => {
+  const result = spawnSync(process.execPath, [bin, 'status', '--allow-network'], { cwd: process.cwd(), encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /--allow-network is not supported/);
 });
 
 test('CLI query rejects unknown options', () => {

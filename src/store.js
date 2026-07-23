@@ -500,6 +500,20 @@ export function getDocument({ id, from = 1, lines = null, cwd = process.cwd(), d
   };
 }
 
+export function listDocuments({ cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH), filters = {}, limit = 200 } = {}) {
+  if (!existsSync(dbPath)) throw new Error('No index. Run: zbrain index');
+  const normalizedFilters = normalizeFilters(filters);
+  if (hasFilters(normalizedFilters)) assertMetadataReady({ cwd, dbPath });
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 200, 1000));
+  const where = documentFilterWhereSql(normalizedFilters);
+  const sql = `SELECT id, path, title, project, doc_type, doc_date FROM documents${where ? ` WHERE ${where}` : ''} ORDER BY doc_date DESC, path ASC LIMIT ${safeLimit};`;
+  const rows = runSqlJson(dbPath, sql);
+  return {
+    schemaVersion: 1,
+    documents: rows.map((row) => ({ id: row.id, path: row.path, title: row.title, project: row.project ?? null, type: row.doc_type ?? null, date: row.doc_date ?? null })),
+  };
+}
+
 export function statusIndex({ cwd = process.cwd(), dbPath = path.join(cwd, DB_PATH) } = {}) {
   const dbExists = existsSync(dbPath);
   if (!dbExists) return { schemaVersion: 1, status: { dbExists: false, dbPath: path.relative(cwd, dbPath), schemaVersion: null, documents: 0, chunks: 0, sqliteVersion: sqliteVersion(), fts5: fts5Available() } };

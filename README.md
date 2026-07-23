@@ -107,6 +107,54 @@ zbrain watch --once --embed-stale --json
 
 `index` updates changed/deleted Markdown docs incrementally when an index already exists. `embed --stale` embeds only chunks missing the active model's current embedding input hash. `watch` does not commit or mutate Markdown files; it refreshes `.zbrain/index.sqlite` and optionally stale embeddings.
 
+## Scheduled briefings
+
+Generate recurring digests from recently dated docs:
+
+```bash
+cd ~/private-docs
+zbrain brief --period daily      # brief-YYYY-MM-DD.md, last 1 day
+zbrain brief --period weekly     # eow-YYYY-MM-DD.md, last 7 days
+```
+
+Briefs are written to `<corpus-root>/inbox/` by default. The date window keys on each doc's `doc_date` (the first `YYYY-MM-DD` in its relative path), not file mtime — undated docs will not appear in a brief. Re-running for the same day overwrites; empty windows write nothing.
+
+**Two summarization modes:**
+
+- **Offline (default):** a structured markdown listing grouped by type. No network, stays inside the local-only boundary.
+- **Cloud agent (`--allow-network`):** the structured listing is handed to a local agent CLI (mewrite by default) to write prose. **This sends your notes to the agent's model.** With the default agent that is a cloud provider, so your private docs leave the machine. `brief` is the only command that can use the network, and only with explicit opt-in. Every network run is recorded to `.zbrain/brief-audit.log`.
+
+```bash
+zbrain brief --period weekly --allow-network
+```
+
+Configure defaults and the agent in `.zbrain/config.json`:
+
+```json
+{
+  "briefings": {
+    "outputDir": "inbox",
+    "daily": { "days": 1 },
+    "weekly": { "days": 7 },
+    "filters": { "type": "sessions" },
+    "agent": {
+      "command": "mewrite",
+      "args": ["exec", "--output-last-message", "{outFile}", "{prompt}"],
+      "allowNetwork": true
+    }
+  }
+}
+```
+
+`{prompt}` and `{outFile}` are substituted at call time; the prompt is also piped on stdin. Swap `command`/`args` for any other agent (claude, codex, aider). Pick a model via the agent's own flags (e.g. `mewrite exec --model anthropic/claude-sonnet-4-5 ...`). Set `agent.allowNetwork: true` to make cloud summarization the default without passing `--allow-network` each run.
+
+Schedule with the launchd templates in `scripts/launchd/` (edit `WorkingDirectory` to your corpus, then `cp` to `~/Library/LaunchAgents/` and `launchctl load`). Cron alternative:
+
+```cron
+30 7 * * *   cd ~/private-docs && /opt/homebrew/bin/zbrain brief --period daily --allow-network
+0 16 * * 5   cd ~/private-docs && /opt/homebrew/bin/zbrain brief --period weekly --allow-network
+```
+
 Narrow retrieval with local metadata filters:
 
 ```bash

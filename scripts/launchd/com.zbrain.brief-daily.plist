@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Daily brief. Edit ZBRAIN_CORPUS and the zbrain path, then install:
+    cp scripts/launchd/com.zbrain.brief-daily.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.zbrain.brief-daily.plist
+
+  Uses --allow-network: your notes are sent to the configured cloud agent (mewrite).
+  Drop --allow-network to get the offline structured listing instead.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.zbrain.brief-daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/zbrain</string>
+    <string>brief</string>
+    <string>--period</string>
+    <string>daily</string>
+    <string>--allow-network</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>REPLACE_WITH_CORPUS_DIR</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/zbrain-brief-daily.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/zbrain-brief-daily.err.log</string>
+</dict>
+</plist>

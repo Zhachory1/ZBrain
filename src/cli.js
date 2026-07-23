@@ -6,6 +6,7 @@ import { expandAliases, validateAliases } from './aliases.js';
 import { answerQuery, formatAnswerText } from './answer.js';
 import { retrieve } from './retrieval.js';
 import { formatSearchText, searchQuery } from './search.js';
+import { generateBrief } from './brief.js';
 import { embedProject, getDocument, importProject, indexProject, initProject, loadConfig, preflightProject, queryIndex, statusIndex, vqueryIndex } from './store.js';
 import { watchProject } from './watch.js';
 
@@ -19,8 +20,7 @@ function parseArgs(args) {
       continue;
     }
     if (arg === '--local-only') continue; // legacy alias; local-only is default
-    if (arg === '--allow-network') throw new Error('--allow-network is not supported in M0/M1');
-    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths' || arg === '--stale' || arg === '--embed-stale' || arg === '--once' || arg === '--cite') {
+    if (arg === '--allow-repo-aggregate-output' || arg === '--allow-raw-public-report' || arg === '--force' || arg === '--no-aliases' || arg === '--explain' || arg === '--include-paths' || arg === '--stale' || arg === '--embed-stale' || arg === '--once' || arg === '--cite' || arg === '--allow-network') {
       parsed[arg.slice(2)] = true;
       continue;
     }
@@ -95,6 +95,12 @@ export async function main(args) {
   if (command === 'watch') {
     const target = parsed._[1] || '.';
     const result = await watchProject({ target, interval: parsed.interval, once: Boolean(parsed.once), embedStale: Boolean(parsed['embed-stale']) });
+    print(result, parsed.json);
+    return;
+  }
+  if (command === 'brief') {
+    assertAllowedOptions(parsed, ['json', 'period', 'date', 'out', 'days', 'allow-network', ...FILTER_FLAGS]);
+    const result = await generateBrief({ period: parsed.period || 'daily', date: parsed.date, out: parsed.out, days: parsed.days, filters: filtersFromParsed(parsed), allowNetwork: Boolean(parsed['allow-network']) });
     print(result, parsed.json);
     return;
   }
@@ -255,7 +261,7 @@ function print(value, json = false) {
 }
 
 function printHelp() {
-  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  watch [path] [--interval N] [--once] [--embed-stale] [--json]\n  index [--json]\n  search <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
+  console.log(`ZBrain CLI\n\nLocal-only is always on. External/network-enabled runs are not supported yet.\n\nCommands:\n  init --path <dir> [--force] [--json]\n  preflight <path> [--include-paths] [--json]\n  import <path> [--force] [--json]\n  watch [path] [--interval N] [--once] [--embed-stale] [--json]\n  brief [--period daily|weekly] [--date YYYY-MM-DD] [--out path] [--days N] [--allow-network] [--project slug] [--type type] [--json]\n  index [--json]\n  search <text> [--mode exact|broad|hybrid] [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]
   query <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json] [--no-aliases] [--explain]
   embed [--stale] [--json]
   vquery <text> [--limit N] [--project slug] [--type type] [--path-prefix path] [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] [--json]

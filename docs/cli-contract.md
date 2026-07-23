@@ -156,6 +156,31 @@ Recommended macOS polling setup:
 </dict></plist>
 ```
 
+## brief
+
+```bash
+zbrain brief [--period daily|weekly] [--date YYYY-MM-DD] [--out path] [--days N] [--allow-network] [--project slug] [--type type] [--json]
+```
+
+Generates a recurring digest from docs whose `doc_date` falls in a rolling window.
+
+- `--period`: `daily` (default, 1-day window, `brief-` prefix) or `weekly` (7-day window, `eow-` prefix)
+- `--date`: window end, defaults to today (UTC)
+- `--days`: override the window size
+- `--out`: explicit output file; defaults to `<corpus-root>/inbox/<prefix><date>.md` (or `briefings.outputDir`)
+- `--allow-network`: hand the listing to the configured agent for prose summarization; **sends corpus content to the agent's model.** Without it (or `briefings.agent.allowNetwork`), `brief` writes an offline structured listing. `brief` is the only command permitted to use the network.
+- filters (`--project`, `--type`, `--from-date`, `--to-date`) narrow the docs included
+
+Empty windows write nothing (`written: false`). Re-running for the same day overwrites. Network runs append to `.zbrain/brief-audit.log`.
+
+Success:
+
+```json
+{ "schemaVersion": 1, "written": true, "path": "inbox/eow-2026-07-23.md", "period": "weekly", "source": "agent", "documents": 12, "fromDate": "2026-07-16", "toDate": "2026-07-23" }
+```
+
+`source` is `agent` when the cloud agent produced the prose, or `offline-listing` for the local structured digest. Agent config lives under `briefings.agent` (`command`, `args` with `{prompt}`/`{outFile}` placeholders, optional `allowNetwork`).
+
 ## Retrieval filters
 
 `query`, `vquery`, and `hquery` accept optional local metadata filters:

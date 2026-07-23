@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  End-of-week summary (Fridays 16:00). Edit WorkingDirectory and the zbrain path, then install:
+    cp scripts/launchd/com.zbrain.brief-eow.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.zbrain.brief-eow.plist
+
+  Uses --allow-network: your notes are sent to the configured cloud agent (mewrite).
+  Drop --allow-network to get the offline structured listing instead.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.zbrain.brief-eow</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/zbrain</string>
+    <string>brief</string>
+    <string>--period</string>
+    <string>weekly</string>
+    <string>--allow-network</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>REPLACE_WITH_CORPUS_DIR</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>5</integer>
+    <key>Hour</key>
+    <integer>16</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/zbrain-brief-eow.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/zbrain-brief-eow.err.log</string>
+</dict>
+</plist>
