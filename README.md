@@ -33,6 +33,27 @@ sqlite3 --version
 sqlite3 :memory: 'CREATE VIRTUAL TABLE x USING fts5(y);'
 ```
 
+## Getting started
+
+Clone → query your own brain in a few steps:
+
+```bash
+git clone https://github.com/Zhachory1/ZBrain.git
+cd ZBrain && npm install
+npm link                         # puts zbrain / zbrain-mcp on PATH
+
+cd ~/private-docs                # your markdown corpus
+zbrain import ~/private-docs --json   # build local .zbrain/index.sqlite
+zbrain embed --stale --json           # optional: local Ollama embeddings
+zbrain answer "what did we decide about X?" --json
+
+zbrain-mcp --root ~/private-docs # serve the brain to MCP agents
+```
+
+New contributor? See `CONTRIBUTING.md` for setup, validation, and the dev
+workflow. Full command and server references live in `docs/cli-contract.md`
+and `docs/mcp-contract.md`.
+
 ## Quickstart
 
 ```bash
@@ -198,7 +219,7 @@ Example MCP config:
 }
 ```
 
-MCP tools are read-only and bounded. Tool output can contain private snippets/paths; local MCP clients are trusted to see them.
+MCP tools are read-only and bounded. Tool output can contain private snippets/paths; local MCP clients are trusted to see them. See `docs/mcp-contract.md` for tool inputs, modes, and bounds.
 
 ## Local-only behavior
 
