@@ -32,6 +32,57 @@ test('embedding config rejects non-loopback URLs', () => {
   assert.throws(() => resolveEmbeddingConfig({ embeddings: { provider: 'ollama', baseUrl: 'http://192.168.1.1:11434', model: 'x' } }), /loopback/);
 });
 
+test('openai config requires explicit network opt-in', () => {
+  const prev = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = 'sk-test';
+  try {
+    assert.throws(() => resolveEmbeddingConfig({ embeddings: { provider: 'openai' } }), /allowNetwork/);
+    const ok = resolveEmbeddingConfig({ embeddings: { provider: 'openai', allowNetwork: true } });
+    assert.equal(ok.provider, 'openai');
+    assert.equal(ok.model, 'text-embedding-3-small');
+    assert.equal(ok.apiKey, 'sk-test');
+  } finally {
+    if (prev === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = prev;
+  }
+});
+
+test('openai config requires api key and https', () => {
+  const prev = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  try {
+    assert.throws(() => resolveEmbeddingConfig({ embeddings: { provider: 'openai', allowNetwork: true } }), /API key/);
+    process.env.OPENAI_API_KEY = 'sk-test';
+    assert.throws(() => resolveEmbeddingConfig({ embeddings: { provider: 'openai', allowNetwork: true, baseUrl: 'http://api.openai.com' } }), /https/);
+    assert.doesNotThrow(() => resolveEmbeddingConfig({ embeddings: { provider: 'openai', allowNetwork: true, baseUrl: 'http://127.0.0.1:4000' } }));
+  } finally {
+    if (prev === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = prev;
+  }
+});
+
+test('embedText hits openai v1/embeddings and audits egress', async () => {
+  let seenPath = '';
+  let seenAuth = '';
+  const server = createServer((req, res) => {
+    seenPath = req.url;
+    seenAuth = req.headers.authorization || '';
+    req.resume();
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3] }] }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const prev = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = 'sk-test';
+  try {
+    const result = await embedText('private prompt', { provider: 'openai', allowNetwork: true, baseUrl: `http://127.0.0.1:${server.address().port}`, model: 'text-embedding-3-small' });
+    assert.deepEqual(result.embedding, [0.1, 0.2, 0.3]);
+    assert.match(seenPath, /\/v1\/embeddings/);
+    assert.equal(seenAuth, 'Bearer sk-test');
+  } finally {
+    if (prev === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = prev;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('cosine ranks identical vectors higher', () => {
   assert.equal(cosine([1, 0], [1, 0]) > cosine([1, 0], [0, 1]), true);
 });

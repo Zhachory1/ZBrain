@@ -540,6 +540,7 @@ export async function embedProject({ cwd = process.cwd(), dbPath = path.join(cwd
   const config = loadConfig(cwd);
   const embeddingConfig = resolveEmbeddingConfig(config);
   ensureEmbeddingInputHashColumn(dbPath);
+  if (embeddingConfig.provider === 'openai') auditEmbedding({ cwd, purpose: 'embed', model: embeddingConfig.model });
   const chunks = runSqlJson(dbPath, `SELECT chunk_id, document_id, path, line_start, line_end, title, text FROM chunks_fts;`);
   const existing = staleOnly ? new Map(runSqlJson(dbPath, `SELECT chunk_id, input_hash FROM chunk_embeddings WHERE model = ${q(embeddingConfig.model)};`).map((row) => [row.chunk_id, row.input_hash])) : new Map();
   let embedded = 0;
@@ -562,6 +563,13 @@ function embeddingInput(chunk) {
   return `title: ${chunk.title}\npath: ${chunk.path}\ntext: ${chunk.text}`;
 }
 
+function auditEmbedding({ cwd, purpose, model }) {
+  const dir = path.join(cwd, ZBRAIN_DIR);
+  mkdirSync(dir, { recursive: true });
+  const row = { ts: new Date().toISOString(), purpose, provider: 'openai', network: true, model, corpus: cwd };
+  writeFileSync(path.join(dir, 'embed-audit.log'), `${JSON.stringify(row)}\n`, { flag: 'a' });
+}
+
 function embeddingInputHash(prompt) {
   return createHash('sha256').update(`${EMBEDDING_INPUT_VERSION}\n${String(prompt).slice(0, 500)}`).digest('hex').slice(0, 16);
 }
@@ -575,6 +583,7 @@ export async function vqueryIndex({ query, limit = 10, cwd = process.cwd(), dbPa
   const model = embeddingConfig.model;
   const globalRows = runSqlJson(dbPath, `SELECT COUNT(*) AS count FROM chunk_embeddings WHERE model = ${q(model)};`);
   if (Number(globalRows[0]?.count || 0) === 0) throw new Error('no embeddings found. Run: zbrain embed');
+  if (embeddingConfig.provider === 'openai') auditEmbedding({ cwd, purpose: 'vquery', model: embeddingConfig.model });
   const where = documentFilterWhereSql(normalizedFilters, 'd');
   const rows = runSqlJson(dbPath, `SELECT e.chunk_id, e.document_id, e.path, d.hash, e.line_start, e.line_end, e.title, e.text, e.model, e.dims, e.embedding_json FROM chunk_embeddings e JOIN documents d ON d.id = e.document_id WHERE e.model = ${q(model)}${where ? ` AND ${where}` : ''};`);
   if (rows.length === 0) return { schemaVersion: 1, query: { retrievalMode: 'vector', scoreKind: 'cosine', embeddingModel: model, filters: hasFilters(normalizedFilters) ? normalizedFilters : undefined }, results: [] };

@@ -321,6 +321,34 @@ zbrain vquery "manual release workflow" --json
 
 ZBrain only allows loopback Ollama URLs. Chunk/query text is sent to your local Ollama process; if your Ollama setup forwards remotely, that is outside ZBrain's privacy guarantee.
 
+### OpenAI embeddings (cloud, opt-in)
+
+You can use OpenAI instead of local Ollama. **This sends your document chunks (on `embed`) and query text (on `vquery` / `search --mode broad` / `answer`) to `api.openai.com`.** It is the only embeddings path that leaves your machine, so it requires explicit opt-in.
+
+```json
+{
+  "schemaVersion": 1,
+  "root": "docs",
+  "embeddings": {
+    "provider": "openai",
+    "model": "text-embedding-3-small",
+    "allowNetwork": true,
+    "apiKeyEnv": "OPENAI_API_KEY"
+  }
+}
+```
+
+- `allowNetwork: true` is required; without it the provider errors out.
+- The API key is read from the env var named by `apiKeyEnv` (default `OPENAI_API_KEY`) and is never written to config.
+- `baseUrl` defaults to `https://api.openai.com`; https is required except for loopback proxies (e.g. a local litellm/llama.cpp OpenAI-compatible endpoint on `http://127.0.0.1:<port>`).
+- Every network embed/vquery run appends an audit row to `.zbrain/embed-audit.log`.
+
+```bash
+export OPENAI_API_KEY=sk-...
+zbrain embed --json
+zbrain vquery "manual release workflow" --json
+```
+
 ## Retrieval calibration
 
 M8 adds local alias proposal generation. It never edits config automatically.

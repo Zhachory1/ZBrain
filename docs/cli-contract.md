@@ -393,7 +393,7 @@ Example explain shape:
 zbrain embed [--stale] [--json]
 ```
 
-Embeds current indexed chunks using configured local Ollama provider.
+Embeds current indexed chunks using the configured provider (local Ollama by default; `openai` optional with `embeddings.allowNetwork: true`, which sends chunk text to `api.openai.com` and logs to `.zbrain/embed-audit.log`).
 
 `--stale` skips chunks that already have an embedding for the active model and the current embedding input hash. Existing rows without an input hash are treated as stale.
 
