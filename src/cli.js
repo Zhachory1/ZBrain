@@ -39,10 +39,10 @@ function parseArgs(args) {
 }
 
 export async function main(args) {
-  if (args.includes('--allow-network')) throw new Error('--allow-network is not supported');
   const earlyCommand = args.find((arg) => !arg.startsWith('--'));
+  if (args.includes('--allow-network') && earlyCommand !== 'brief') throw new Error('--allow-network is not supported');
   const answerMode = args[args.indexOf('--mode') + 1];
-  const loopbackCommand = earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery' || (earlyCommand === 'watch' && args.includes('--embed-stale')) || ((earlyCommand === 'answer' || earlyCommand === 'search') && ['broad', 'vector', 'hybrid'].includes(answerMode));
+  const loopbackCommand = earlyCommand === 'brief' || earlyCommand === 'embed' || earlyCommand === 'vquery' || earlyCommand === 'hquery' || (earlyCommand === 'watch' && args.includes('--embed-stale')) || ((earlyCommand === 'answer' || earlyCommand === 'search') && ['broad', 'vector', 'hybrid'].includes(answerMode));
   if (!loopbackCommand) {
     if (shouldWrapLocalOnly(args)) runInMacSandbox(args);
     failIfUnsupportedLocalOnly();

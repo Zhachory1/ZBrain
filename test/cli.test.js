@@ -60,6 +60,28 @@ test('CLI brief runs offline listing without network opt-in', () => {
   }
 });
 
+test('CLI brief accepts --allow-network (uses configured agent)', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'zbrain-cli-brief-net-'));
+  mkdirSync(path.join(dir, 'inbox'), { recursive: true });
+  writeFileSync(path.join(dir, 'inbox/2026-07-22-note.md'), '# Note\n\nbody\n');
+  const agentScript = path.join(dir, 'fake-agent.js');
+  writeFileSync(agentScript, 'import { writeFileSync } from "node:fs";\nconst out = process.argv[process.argv.indexOf("--out") + 1];\nwriteFileSync(out, "# Prose\\n\\nagent summary\\n");\n');
+  initProject({ cwd: dir, root: '.' });
+  indexProject({ cwd: dir });
+  const configPath = path.join(dir, '.zbrain/config.json');
+  const config = JSON.parse(readFileSync(configPath, 'utf8'));
+  config.briefings = { agent: { command: process.execPath, args: [agentScript, '--out', '{outFile}'] } };
+  writeFileSync(configPath, JSON.stringify(config, null, 2));
+  try {
+    const result = spawnSync(process.execPath, [bin, 'brief', '--period', 'weekly', '--date', '2026-07-23', '--allow-network', '--json'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.source, 'agent');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('CLI still rejects --allow-network for non-brief commands', () => {
   const result = spawnSync(process.execPath, [bin, 'status', '--allow-network'], { cwd: process.cwd(), encoding: 'utf8' });
   assert.notEqual(result.status, 0);
