@@ -1,9 +1,12 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { listDocuments, loadConfig } from './store.js';
 import { auditRow } from './privacy.js';
+
+const PACKAGED_PROMPT = fileURLToPath(new URL('../prompts/brief-summary.md', import.meta.url));
 
 const PERIODS = {
   daily: { days: 1, prefix: 'brief-', title: 'Daily brief', instruction: 'Write a concise daily brief. Cover new/updated notes, open threads, and upcoming items. Group related work and keep it skimmable.' },
@@ -32,7 +35,10 @@ export async function generateBrief({ period = 'daily', date, out, days, filters
   let body = listing;
   let source = 'offline-listing';
   if (useAgent) {
-    const summary = runAgent({ agent, prompt: `${spec.instruction}\n\n${listing}`, cwd });
+    const promptFile = agent.promptFile ? path.resolve(cwd, agent.promptFile) : PACKAGED_PROMPT;
+    const system = readFileSync(promptFile, 'utf8').trim();
+    const prompt = `${system}\n\n---\n\n${spec.instruction}\n\n${listing}`;
+    const summary = runAgent({ agent, prompt, promptFile, cwd });
     if (summary) { body = summary; source = 'agent'; }
   }
 
@@ -42,14 +48,14 @@ export async function generateBrief({ period = 'daily', date, out, days, filters
   return { schemaVersion: 1, written: true, path: outFile, period, source, documents: documents.length, fromDate, toDate: endDate };
 }
 
-const DEFAULT_AGENT = { command: 'mewrite', args: ['exec', '--output-last-message', '{outFile}', '{prompt}'] };
+const DEFAULT_AGENT = { command: 'mewrite', args: ['exec', '--ephemeral', '--output-last-message', '{outFile}', '{prompt}'] };
 
-function runAgent({ agent, prompt, cwd }) {
+function runAgent({ agent, prompt, promptFile, cwd }) {
   if (!agent.command) throw new Error('briefings.agent.command is required for network summarization');
   const tmp = mkdtempSync(path.join(tmpdir(), 'zbrain-brief-'));
   const agentOut = path.join(tmp, 'summary.md');
   try {
-    const args = (agent.args || []).map((arg) => arg.replaceAll('{prompt}', prompt).replaceAll('{outFile}', agentOut));
+    const args = (agent.args || []).map((arg) => arg.replaceAll('{prompt}', prompt).replaceAll('{outFile}', agentOut).replaceAll('{promptFile}', promptFile));
     const result = spawnSync(agent.command, args, { cwd, encoding: 'utf8', input: prompt });
     if (result.status !== 0) throw new Error(`agent failed (exit ${result.status ?? 'null'}): ${(result.stderr || '').trim().slice(0, 500)}`);
     const wantsOutFile = (agent.args || []).some((arg) => arg.includes('{outFile}'));

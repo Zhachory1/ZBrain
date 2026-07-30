@@ -76,6 +76,40 @@ test('allowNetwork invokes configured agent and audits egress', async () => {
   }
 });
 
+test('packaged summarizer prompt is folded into the agent prompt (stdin)', async () => {
+  const dir = fixture();
+  try {
+    // agent echoes its stdin (the full prompt) back as the summary
+    const agentScript = path.join(dir, 'echo-agent.js');
+    writeFileSync(agentScript, 'import { readFileSync, writeFileSync } from "node:fs";\nconst out = process.argv[process.argv.indexOf("--out") + 1];\nwriteFileSync(out, readFileSync(0, "utf8"));\n');
+    const config = JSON.parse(readFileSync(path.join(dir, '.zbrain/config.json'), 'utf8'));
+    config.briefings = { agent: { command: process.execPath, args: [agentScript, '--out', '{outFile}'] } };
+    writeFileSync(path.join(dir, '.zbrain/config.json'), JSON.stringify(config, null, 2));
+    const result = await generateBrief({ cwd: dir, period: 'weekly', date: '2026-07-23', allowNetwork: true });
+    const body = readFileSync(result.path, 'utf8');
+    assert.match(body, /You are a summarizer, not an agent/); // system prompt reached the agent
+    assert.match(body, /Session Beta/); // listing reached the agent too
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('custom promptFile overrides the packaged summarizer prompt', async () => {
+  const dir = fixture();
+  try {
+    writeFileSync(path.join(dir, 'my-prompt.md'), 'CUSTOM_SUMMARIZER_MARKER');
+    const agentScript = path.join(dir, 'echo-agent.js');
+    writeFileSync(agentScript, 'import { readFileSync, writeFileSync } from "node:fs";\nconst out = process.argv[process.argv.indexOf("--out") + 1];\nwriteFileSync(out, readFileSync(0, "utf8"));\n');
+    const config = JSON.parse(readFileSync(path.join(dir, '.zbrain/config.json'), 'utf8'));
+    config.briefings = { agent: { command: process.execPath, args: [agentScript, '--out', '{outFile}'], promptFile: 'my-prompt.md' } };
+    writeFileSync(path.join(dir, '.zbrain/config.json'), JSON.stringify(config, null, 2));
+    const result = await generateBrief({ cwd: dir, period: 'weekly', date: '2026-07-23', allowNetwork: true });
+    assert.match(readFileSync(result.path, 'utf8'), /CUSTOM_SUMMARIZER_MARKER/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('type filter narrows the brief', async () => {
   const dir = fixture();
   try {

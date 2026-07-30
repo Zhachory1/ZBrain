@@ -160,14 +160,16 @@ Configure defaults and the agent in `.zbrain/config.json`:
     "filters": { "type": "sessions" },
     "agent": {
       "command": "mewrite",
-      "args": ["exec", "--output-last-message", "{outFile}", "{prompt}"],
+      "args": ["exec", "--ephemeral", "--output-last-message", "{outFile}", "{prompt}"],
       "allowNetwork": true
     }
   }
 }
 ```
 
-`{prompt}` and `{outFile}` are substituted at call time; the prompt is also piped on stdin. Swap `command`/`args` for any other agent (claude, codex, aider). Pick a model via the agent's own flags (e.g. `mewrite exec --model anthropic/claude-sonnet-4-5 ...`). Set `agent.allowNetwork: true` to make cloud summarization the default without passing `--allow-network` each run.
+A packaged summarizer prompt (`prompts/brief-summary.md`) is prepended to the agent's prompt, instructing it to emit only a digest and take no actions — override with `agent.promptFile` (a path relative to the corpus). `{prompt}` (system prompt + instruction + listing) and `{outFile}` are substituted at call time; `{prompt}` is also piped on stdin. `{promptFile}` is available for agent CLIs that accept a system-prompt file directly. `--ephemeral` makes mewrite ignore your project/global settings for the run. Swap `command`/`args` for any other agent (claude, codex, aider). Pick a model via the agent's own flags (e.g. `mewrite exec --model anthropic/claude-sonnet-4-5 ...`). Set `agent.allowNetwork: true` to make cloud summarization the default without passing `--allow-network` each run.
+
+> Note: `mewrite exec` is a full coding agent and has no flag to hard-disable tools, so the packaged prompt is the mechanism that keeps it summarizing rather than exploring. If your agent supports a no-tools mode, add that flag to `args`.
 
 Schedule with the launchd templates in `scripts/launchd/` (edit `WorkingDirectory` to your corpus, then `cp` to `~/Library/LaunchAgents/` and `launchctl load`). Cron alternative:
 
