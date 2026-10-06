@@ -32,6 +32,8 @@ All tools are read-only and bounded. Output may include private snippets and pat
 
 ## Wire behavior
 
+The stdio server accepts newline-delimited JSON or `Content-Length` requests and replies in the request's framing. Newline-delimited replies work with current MCP clients; framed replies remain available to legacy clients.
+
 Supported methods:
 
 - `initialize`

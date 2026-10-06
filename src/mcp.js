@@ -42,20 +42,20 @@ export async function runMcpServer({ input = process.stdin, output = process.std
   let queue = Promise.resolve();
   input.on('data', (chunk) => {
     buffer = Buffer.concat([buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
-    for (const raw of takeMessages()) {
+    for (const { raw, framed } of takeMessages()) {
       if (raw.length > 1024 * 1024) {
-        writeMessage(output, errorResponse(null, -32700, 'message too large')); 
+        writeMessage(output, errorResponse(null, -32700, 'message too large'), framed);
         continue;
       }
       queue = queue.then(async () => {
         let parsed;
         try { parsed = JSON.parse(raw.toString('utf8')); }
         catch {
-          writeMessage(output, errorResponse(null, -32700, 'parse error')); 
+          writeMessage(output, errorResponse(null, -32700, 'parse error'), framed);
           return;
         }
         const response = await handleMcpMessage(parsed, context).catch((err) => errorResponse(parsed.id ?? null, -32000, err.message || String(err)));
-        if (response) writeMessage(output, response);
+        if (response) writeMessage(output, response, framed);
       });
     }
   });
@@ -70,9 +70,9 @@ export async function runMcpServer({ input = process.stdin, output = process.std
         const header = buffer.slice(0, headerEnd).toString('ascii');
         const length = Number((header.match(/Content-Length:\s*(\d+)/i) || [])[1]);
         const start = headerEnd + marker.length;
-        if (!Number.isFinite(length)) { out.push(Buffer.from('{bad')); buffer = buffer.slice(start); continue; }
+        if (!Number.isFinite(length)) { out.push({ raw: Buffer.from('{bad'), framed: true }); buffer = buffer.slice(start); continue; }
         if (buffer.length < start + length) break;
-        out.push(buffer.slice(start, start + length));
+        out.push({ raw: buffer.slice(start, start + length), framed: true });
         buffer = buffer.slice(start + length);
         continue;
       }
@@ -80,16 +80,16 @@ export async function runMcpServer({ input = process.stdin, output = process.std
       if (index < 0) break;
       const line = buffer.slice(0, index).toString('utf8').trim();
       buffer = buffer.slice(index + 1);
-      if (line) out.push(Buffer.from(line));
+      if (line) out.push({ raw: Buffer.from(line), framed: false });
     }
     return out;
   }
   input.on('error', (err) => error.write(`zbrain-mcp input error: ${err.message}\n`));
 }
 
-function writeMessage(output, message) {
+function writeMessage(output, message, framed) {
   const body = JSON.stringify(message);
-  output.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+  output.write(framed ? `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}` : `${body}\n`);
 }
 
 function initializeResult() {

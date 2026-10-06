@@ -22,22 +22,35 @@ function fixture() {
 function startServer(root, env = {}) {
   const child = spawn(process.execPath, [bin, '--root', root], { cwd: tmpdir(), env: { ...process.env, ...env } });
   const responses = [];
+  const responseFrames = [];
   let stdout = Buffer.alloc(0);
   child.stdout.on('data', (chunk) => {
     stdout = Buffer.concat([stdout, chunk]);
     while (stdout.length) {
-      const marker = Buffer.from('\r\n\r\n');
-      const headerEnd = stdout.indexOf(marker);
-      if (headerEnd < 0) break;
-      const header = stdout.slice(0, headerEnd).toString('ascii');
-      const length = Number((header.match(/Content-Length:\s*(\d+)/i) || [])[1]);
-      const start = headerEnd + marker.length;
-      if (!Number.isFinite(length) || stdout.length < start + length) break;
-      responses.push(JSON.parse(stdout.slice(start, start + length).toString('utf8')));
-      stdout = stdout.slice(start + length);
+      if (stdout.toString('ascii', 0, 15).startsWith('Content-Length:')) {
+        const marker = Buffer.from('\r\n\r\n');
+        const headerEnd = stdout.indexOf(marker);
+        if (headerEnd < 0) break;
+        const header = stdout.slice(0, headerEnd).toString('ascii');
+        const length = Number((header.match(/Content-Length:\s*(\d+)/i) || [])[1]);
+        const start = headerEnd + marker.length;
+        if (!Number.isFinite(length) || stdout.length < start + length) break;
+        responses.push(JSON.parse(stdout.slice(start, start + length).toString('utf8')));
+        responseFrames.push('framed');
+        stdout = stdout.slice(start + length);
+        continue;
+      }
+      const index = stdout.indexOf(0x0a);
+      if (index < 0) break;
+      const line = stdout.slice(0, index).toString('utf8').trim();
+      stdout = stdout.slice(index + 1);
+      if (line) {
+        responses.push(JSON.parse(line));
+        responseFrames.push('jsonl');
+      }
     }
   });
-  return { child, responses, send: (msg) => child.stdin.write(`${typeof msg === 'string' ? msg : JSON.stringify(msg)}\n`), sendFramed: (msg) => { const body = JSON.stringify(msg); child.stdin.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`); }, close: () => child.kill() };
+  return { child, responses, responseFrames, send: (msg) => child.stdin.write(`${typeof msg === 'string' ? msg : JSON.stringify(msg)}\n`), sendFramed: (msg) => { const body = JSON.stringify(msg); child.stdin.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`); }, close: () => child.kill() };
 }
 
 async function waitFor(responses, count, timeoutMs = 1000) {
@@ -67,6 +80,21 @@ test('mcp accepts Content-Length framed initialize', async () => {
   try {
     server.sendFramed({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
     await waitFor(server.responses, 1);
+    assert.equal(server.responses[0].result.serverInfo.name, 'zbrain');
+    assert.equal(server.responseFrames[0], 'framed');
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp sends JSONL replies to JSONL requests', async () => {
+  const dir = fixture();
+  const server = startServer(dir);
+  try {
+    server.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+    await waitFor(server.responses, 1);
+    assert.equal(server.responseFrames[0], 'jsonl');
     assert.equal(server.responses[0].result.serverInfo.name, 'zbrain');
   } finally {
     server.close();
